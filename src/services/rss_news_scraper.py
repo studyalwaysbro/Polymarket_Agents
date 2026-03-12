@@ -1,6 +1,7 @@
 """RSS news feed scraper - completely free, no API keys needed."""
 
 import feedparser
+import socket
 import time
 from datetime import datetime, timedelta
 from typing import List, Dict
@@ -38,7 +39,7 @@ class RSSNewsScraper:
     @limits(calls=10, period=60)  # 10 feeds per minute to be respectful
     def _fetch_feed(self, url: str) -> feedparser.FeedParserDict:
         """
-        Fetch RSS feed with rate limiting.
+        Fetch RSS feed with rate limiting and timeout.
 
         Args:
             url: RSS feed URL
@@ -46,12 +47,16 @@ class RSSNewsScraper:
         Returns:
             Parsed feed
         """
+        old_timeout = socket.getdefaulttimeout()
         try:
+            socket.setdefaulttimeout(10)  # 10 second timeout per feed
             feed = feedparser.parse(url)
             return feed
         except Exception as e:
             logger.error(f"Error fetching RSS feed {url}: {e}")
             return feedparser.FeedParserDict()
+        finally:
+            socket.setdefaulttimeout(old_timeout)
 
     def search_news(self, keywords: List[str], hours_back: int = 24) -> List[Dict]:
         """
@@ -64,6 +69,10 @@ class RSSNewsScraper:
         Returns:
             List of matching articles
         """
+        if not keywords:
+            logger.debug("No keywords provided, skipping RSS search")
+            return []
+
         articles = []
         cutoff_time = datetime.utcnow() - timedelta(hours=hours_back)
 

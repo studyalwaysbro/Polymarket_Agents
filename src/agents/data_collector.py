@@ -369,6 +369,10 @@ class DataCollectionAgent:
             # Extract keywords from question
             keywords = self._extract_keywords(question)
 
+            if not keywords:
+                logger.debug(f"No meaningful keywords for: {question[:50]}... - skipping social collection")
+                continue
+
             # Collect Twitter data
             if self.twitter.enabled:
                 try:
