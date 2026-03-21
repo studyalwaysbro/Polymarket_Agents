@@ -86,6 +86,16 @@ class DataCollectionAgent:
         except Exception as e:
             logger.warning(f"Could not initialize X mirror scraper: {e}")
 
+        # Initialize Reddit mirror scraper (free, no API key required)
+        self.reddit_mirror = None
+        try:
+            from ..services.reddit_mirror_scraper import RedditMirrorScraper
+            self.reddit_mirror = RedditMirrorScraper()
+            if self.reddit_mirror.enabled:
+                logger.info("Reddit Mirror scraper initialized (FREE, no API key)")
+        except Exception as e:
+            logger.warning(f"Could not initialize Reddit mirror scraper: {e}")
+
         # Initialize GDELT (free, no key required)
         self.gdelt = None
         try:
@@ -546,6 +556,16 @@ class DataCollectionAgent:
                                 f"({keyword_count} keyword + {title_new} title-search)")
                 except Exception as e:
                     logger.error(f"Error collecting X mirror data: {e}")
+
+            # Collect Reddit mirror posts (free, no API key)
+            if self.reddit_mirror and self.reddit_mirror.enabled:
+                try:
+                    search_query = ' '.join(keywords[:3])
+                    reddit_results = self.reddit_mirror.search_posts(query=search_query, limit=10)
+                    posts.extend(reddit_results)
+                    logger.info(f"Collected {len(reddit_results)} Reddit mirror posts")
+                except Exception as e:
+                    logger.error(f"Error collecting Reddit mirror data: {e}")
 
             # Collect GDELT geopolitical news (free, no key required)
             # Keyword-only — GDELT indexes news articles, not betting markets,

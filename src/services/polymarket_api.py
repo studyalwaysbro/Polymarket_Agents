@@ -227,6 +227,16 @@ class PolymarketAPI:
             logger.error(f"Error fetching order book for {token_id}: {e}")
             return None
 
+    @staticmethod
+    def _safe_decimal(value) -> Decimal:
+        """Safely convert a value to Decimal, returning None on failure."""
+        if not value:
+            return None
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return None
+
     def parse_market_to_contract(self, market: Dict) -> Dict:
         """
         Parse Polymarket API response into standardized contract format.
@@ -263,12 +273,26 @@ class PolymarketAPI:
             yes_odds = None
             no_odds = None
 
+            # Gamma API returns JSON-encoded strings: '["0.5", "0.5"]'
+            if isinstance(outcome_prices, str):
+                try:
+                    import json as _json
+                    outcome_prices = _json.loads(outcome_prices)
+                except Exception:
+                    outcome_prices = []
+            if isinstance(outcomes, str):
+                try:
+                    import json as _json
+                    outcomes = _json.loads(outcomes)
+                except Exception:
+                    outcomes = []
+
             # Method 1: outcomePrices array (most common from Gamma API)
             if outcome_prices and len(outcome_prices) >= 2:
                 try:
                     yes_odds = Decimal(str(outcome_prices[0]))
                     no_odds = Decimal(str(outcome_prices[1]))
-                except (ValueError, TypeError):
+                except Exception:
                     pass
 
             # Method 2: outcomes as dicts with .price (fallback)
@@ -306,8 +330,8 @@ class PolymarketAPI:
                 'category': category,
                 'current_yes_odds': yes_odds,
                 'current_no_odds': no_odds,
-                'volume_24h': Decimal(str(volume_24h)) if volume_24h else None,
-                'liquidity': Decimal(str(liquidity)) if liquidity else None,
+                'volume_24h': self._safe_decimal(volume_24h),
+                'liquidity': self._safe_decimal(liquidity),
                 'active': not market.get('closed', False),
                 'raw_data': market  # Keep raw data for reference
             }

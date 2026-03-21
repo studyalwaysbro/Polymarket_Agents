@@ -127,7 +127,7 @@ class Settings(BaseSettings):
         description='Max contracts to fetch social/news data for (more = more coverage, more API usage)'
     )
     min_confidence_score: int = Field(
-        default=45,
+        default=25,
         ge=0,
         le=100,
         description='Minimum confidence to report a gap'
@@ -175,7 +175,7 @@ class Settings(BaseSettings):
         description='Posts per sentiment analysis batch'
     )
     gap_detection_threshold: float = Field(
-        default=0.08,
+        default=0.04,
         ge=0.0,
         le=1.0,
         description='Minimum odds difference to flag'

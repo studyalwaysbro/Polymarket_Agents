@@ -310,7 +310,7 @@ class GapDetectionAgent:
                 sentiment_shift = recent_avg - older_avg
 
                 # Check if there's a significant shift
-                if abs(sentiment_shift) < 0.2:  # Threshold for significant shift
+                if abs(sentiment_shift) < 0.10:  # Threshold for significant shift (was 0.2)
                     return None
 
                 # Check if odds have moved accordingly
@@ -415,7 +415,7 @@ class GapDetectionAgent:
                 # Check for unusual deviations
                 z_score = (current_odds - avg_odds) / std_dev if std_dev > 0 else 0
 
-                if abs(z_score) < 2.0:  # Not unusual enough
+                if abs(z_score) < 1.5:  # Not unusual enough (was 2.0)
                     return None
 
                 # Calculate confidence based on deviation magnitude
