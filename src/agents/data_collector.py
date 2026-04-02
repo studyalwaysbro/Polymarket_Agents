@@ -1,8 +1,10 @@
 """Data Collection Agent - Fetches market and social media data."""
 
 import hashlib
+import threading
+import concurrent.futures
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from uuid import UUID
 
 from crewai import Agent, Task
@@ -123,6 +125,10 @@ class DataCollectionAgent:
             self.feature_engine = ContractFeatureEngine()
         except Exception as e:
             logger.warning(f"Could not initialize feature engine: {e}")
+
+        # Thread-safety locks for parallel contract processing
+        self._x_mirror_lock = threading.Lock()  # Playwright is NOT thread-safe
+        self._db_lock = threading.Lock()  # Serialize DB writes (session.add + commit)
 
         logger.info("Data Collection Agent initialized")
 
@@ -351,187 +357,186 @@ class DataCollectionAgent:
             logger.error(f"Error collecting market data: {e}")
             return []
 
-    def collect_social_media_data(self, contracts: List[Dict]) -> Dict[str, List[Dict]]:
+    def _collect_for_contract(self, contract: Dict, hours_back: int) -> Tuple[str, List[Dict]]:
         """
-        Collect social media posts related to contracts.
+        Collect all social media data for a single contract.
+
+        Thread-safe: X Mirror calls are serialized via self._x_mirror_lock
+        (Playwright is not thread-safe). All other sources are safe for
+        concurrent use across threads.
 
         Args:
-            contracts: List of contract dictionaries
+            contract: Contract dictionary with id, question, category, contract_id
+            hours_back: How many hours back to search
 
         Returns:
-            Dictionary mapping contract IDs to social posts
+            Tuple of (contract_id, list of collected posts)
         """
-        logger.info(f"Starting social media data collection for {len(contracts)} contracts...")
+        contract_id = contract['id']
+        question = contract['question']
 
-        results = {}
-        hours_back = self.settings.data_collection_lookback_hours
+        logger.info(f"Collecting social data for: {question[:50]}...")
 
-        # Process all contracts passed in (garbage already filtered out,
-        # sorted best-first so most interesting contracts get processed first)
-        for contract in contracts:
-            contract_id = contract['id']
-            question = contract['question']
+        posts = []
 
-            logger.info(f"Collecting social data for: {question[:50]}...")
+        # Extract keywords from question
+        keywords = self._extract_keywords(question)
 
-            posts = []
+        if not keywords:
+            logger.debug(f"No meaningful keywords for: {question[:50]}... - skipping social collection")
+            return (contract_id, posts)
 
-            # Extract keywords from question
-            keywords = self._extract_keywords(question)
-
-            if not keywords:
-                logger.debug(f"No meaningful keywords for: {question[:50]}... - skipping social collection")
-                continue
-
-            # Collect Twitter data
-            if self.twitter.enabled:
-                try:
-                    for keyword in keywords[:3]:  # Limit keywords
-                        twitter_posts = self.twitter.search_tweets(
-                            query=keyword,
-                            max_results=20,
-                            hours_back=hours_back
-                        )
-                        posts.extend(twitter_posts)
-                except Exception as e:
-                    logger.error(f"Error collecting Twitter data: {e}")
-
-            # Collect Reddit data
-            if self.reddit.enabled:
-                try:
-                    # Get relevant subreddits based on category
-                    subreddits = self.reddit.get_relevant_subreddits(
-                        contract.get('category', '')
+        # Collect Twitter data
+        if self.twitter.enabled:
+            try:
+                for keyword in keywords[:3]:  # Limit keywords
+                    twitter_posts = self.twitter.search_tweets(
+                        query=keyword,
+                        max_results=20,
+                        hours_back=hours_back
                     )
+                    posts.extend(twitter_posts)
+            except Exception as e:
+                logger.error(f"Error collecting Twitter data: {e}")
 
-                    for keyword in keywords[:3]:
-                        reddit_posts = self.reddit.search_multiple_subreddits(
-                            subreddits=subreddits[:3],  # Limit subreddits
-                            query=keyword,
-                            max_per_subreddit=10,
-                            hours_back=hours_back
-                        )
-                        posts.extend(reddit_posts)
-                except Exception as e:
-                    logger.error(f"Error collecting Reddit data: {e}")
+        # Collect Reddit data
+        if self.reddit.enabled:
+            try:
+                # Get relevant subreddits based on category
+                subreddits = self.reddit.get_relevant_subreddits(
+                    contract.get('category', '')
+                )
 
-            # Collect Bluesky data (FREE, always available)
-            # Keyword search + contract title search for direct bet discussion
-            if self.bluesky and self.bluesky.enabled:
-                try:
-                    bsky_all = []
-                    for keyword in keywords[:3]:
-                        bsky_posts = self.bluesky.search_posts(
-                            query=keyword,
-                            max_results=25,
-                            hours_back=hours_back
-                        )
-                        bsky_all.extend(bsky_posts)
+                for keyword in keywords[:3]:
+                    reddit_posts = self.reddit.search_multiple_subreddits(
+                        subreddits=subreddits[:3],  # Limit subreddits
+                        query=keyword,
+                        max_per_subreddit=10,
+                        hours_back=hours_back
+                    )
+                    posts.extend(reddit_posts)
+            except Exception as e:
+                logger.error(f"Error collecting Reddit data: {e}")
 
-                    # Title search: people discussing the actual Polymarket question
-                    title_query = question[:120].rstrip('?').strip()
-                    bsky_title = self.bluesky.search_posts(
-                        query=title_query,
+        # Collect Bluesky data (FREE, always available)
+        # Keyword search + contract title search for direct bet discussion
+        if self.bluesky and self.bluesky.enabled:
+            try:
+                bsky_all = []
+                for keyword in keywords[:3]:
+                    bsky_posts = self.bluesky.search_posts(
+                        query=keyword,
                         max_results=25,
                         hours_back=hours_back
                     )
-                    keyword_count = len(bsky_all)
-                    seen_ids = {p.get('post_id') for p in bsky_all}
-                    title_new = 0
-                    for p in bsky_title:
-                        if p.get('post_id') not in seen_ids:
-                            bsky_all.append(p)
-                            seen_ids.add(p.get('post_id'))
-                            title_new += 1
+                    bsky_all.extend(bsky_posts)
 
-                    posts.extend(bsky_all)
-                    logger.info(f"Collected {len(bsky_all)} Bluesky posts "
-                                f"({keyword_count} keyword + {title_new} title-search)")
-                except Exception as e:
-                    logger.error(f"Error collecting Bluesky data: {e}")
+                # Title search: people discussing the actual Polymarket question
+                title_query = question[:120].rstrip('?').strip()
+                bsky_title = self.bluesky.search_posts(
+                    query=title_query,
+                    max_results=25,
+                    hours_back=hours_back
+                )
+                keyword_count = len(bsky_all)
+                seen_ids = {p.get('post_id') for p in bsky_all}
+                title_new = 0
+                for p in bsky_title:
+                    if p.get('post_id') not in seen_ids:
+                        bsky_all.append(p)
+                        seen_ids.add(p.get('post_id'))
+                        title_new += 1
 
-            # Collect RSS news data (FREE, always available)
-            if self.rss_news:
-                try:
-                    news_articles = self.rss_news.search_news(
-                        keywords=keywords[:5],  # Use more keywords for news
-                        hours_back=hours_back
-                    )
+                posts.extend(bsky_all)
+                logger.info(f"Collected {len(bsky_all)} Bluesky posts "
+                            f"({keyword_count} keyword + {title_new} title-search)")
+            except Exception as e:
+                logger.error(f"Error collecting Bluesky data: {e}")
 
-                    # Convert news articles to social post format.
-                    # Use stable hash (SHA-256 of URL) so same article is deduplicated across runs.
-                    for article in news_articles[:20]:  # Limit to 20 articles
-                        url_hash = hashlib.sha256(article['url'].encode('utf-8')).hexdigest()[:16]
-                        posts.append({
-                            'post_id': f"rss_{url_hash}",
-                            'platform': 'news_rss',
-                            'author': article['author'],
-                            'content': f"{article['title']}: {article['content']}",
-                            'posted_at': article['published_at'],  # Fixed: changed from created_at to posted_at
-                            'url': article['url'],
-                            'engagement_score': 50,  # Default score for news
-                            'source_name': article['source']
-                        })
+        # Collect RSS news data (FREE, always available)
+        if self.rss_news:
+            try:
+                news_articles = self.rss_news.search_news(
+                    keywords=keywords[:5],  # Use more keywords for news
+                    hours_back=hours_back
+                )
 
-                    logger.info(f"Collected {len(news_articles)} news articles from RSS feeds")
-                except Exception as e:
-                    logger.error(f"Error collecting RSS news data: {e}")
+                # Convert news articles to social post format.
+                # Use stable hash (SHA-256 of URL) so same article is deduplicated across runs.
+                for article in news_articles[:20]:  # Limit to 20 articles
+                    url_hash = hashlib.sha256(article['url'].encode('utf-8')).hexdigest()[:16]
+                    posts.append({
+                        'post_id': f"rss_{url_hash}",
+                        'platform': 'news_rss',
+                        'author': article['author'],
+                        'content': f"{article['title']}: {article['content']}",
+                        'posted_at': article['published_at'],  # Fixed: changed from created_at to posted_at
+                        'url': article['url'],
+                        'engagement_score': 50,  # Default score for news
+                        'source_name': article['source']
+                    })
 
-            # Collect Tavily web search data (requires API key)
-            # Keyword search + contract title search
-            if self.tavily and self.tavily.enabled:
-                try:
-                    search_query = ' '.join(keywords[:3])
-                    tavily_results = self.tavily.search(query=search_query, max_results=10)
+                logger.info(f"Collected {len(news_articles)} news articles from RSS feeds")
+            except Exception as e:
+                logger.error(f"Error collecting RSS news data: {e}")
 
-                    # Title search: find articles about the specific market question
-                    title_query = question[:120].rstrip('?').strip()
-                    tavily_title = self.tavily.search(query=title_query, max_results=5)
-                    keyword_count = len(tavily_results)
-                    seen_ids = {p.get('post_id') for p in tavily_results}
-                    title_new = 0
-                    for p in tavily_title:
-                        if p.get('post_id') not in seen_ids:
-                            tavily_results.append(p)
-                            seen_ids.add(p.get('post_id'))
-                            title_new += 1
+        # Collect Tavily web search data (requires API key)
+        # Keyword search + contract title search
+        if self.tavily and self.tavily.enabled:
+            try:
+                search_query = ' '.join(keywords[:3])
+                tavily_results = self.tavily.search(query=search_query, max_results=10)
 
-                    posts.extend(tavily_results)
-                    logger.info(f"Collected {len(tavily_results)} Tavily web results "
-                                f"({keyword_count} keyword + {title_new} title-search)")
-                except Exception as e:
-                    logger.error(f"Error collecting Tavily data: {e}")
+                # Title search: find articles about the specific market question
+                title_query = question[:120].rstrip('?').strip()
+                tavily_title = self.tavily.search(query=title_query, max_results=5)
+                keyword_count = len(tavily_results)
+                seen_ids = {p.get('post_id') for p in tavily_results}
+                title_new = 0
+                for p in tavily_title:
+                    if p.get('post_id') not in seen_ids:
+                        tavily_results.append(p)
+                        seen_ids.add(p.get('post_id'))
+                        title_new += 1
 
-            # Collect Grok X sentiment (requires API key)
-            # Keyword search + contract title search
-            if self.grok and self.grok.enabled:
-                try:
-                    search_query = ' '.join(keywords[:3])
-                    grok_results = self.grok.analyze_x_sentiment(query=search_query)
+                posts.extend(tavily_results)
+                logger.info(f"Collected {len(tavily_results)} Tavily web results "
+                            f"({keyword_count} keyword + {title_new} title-search)")
+            except Exception as e:
+                logger.error(f"Error collecting Tavily data: {e}")
 
-                    # Title search: X posts discussing the actual bet
-                    title_query = question[:120].rstrip('?').strip()
-                    grok_title = self.grok.analyze_x_sentiment(query=title_query)
-                    keyword_count = len(grok_results)
-                    seen_ids = {p.get('post_id') for p in grok_results}
-                    title_new = 0
-                    for p in grok_title:
-                        if p.get('post_id') not in seen_ids:
-                            grok_results.append(p)
-                            seen_ids.add(p.get('post_id'))
-                            title_new += 1
+        # Collect Grok X sentiment (requires API key)
+        # Keyword search + contract title search
+        if self.grok and self.grok.enabled:
+            try:
+                search_query = ' '.join(keywords[:3])
+                grok_results = self.grok.analyze_x_sentiment(query=search_query)
 
-                    posts.extend(grok_results)
-                    logger.info(f"Collected {len(grok_results)} Grok X posts "
-                                f"({keyword_count} keyword + {title_new} title-search)")
-                except Exception as e:
-                    logger.error(f"Error collecting Grok data: {e}")
+                # Title search: X posts discussing the actual bet
+                title_query = question[:120].rstrip('?').strip()
+                grok_title = self.grok.analyze_x_sentiment(query=title_query)
+                keyword_count = len(grok_results)
+                seen_ids = {p.get('post_id') for p in grok_results}
+                title_new = 0
+                for p in grok_title:
+                    if p.get('post_id') not in seen_ids:
+                        grok_results.append(p)
+                        seen_ids.add(p.get('post_id'))
+                        title_new += 1
 
-            # Collect X mirror posts (free fallback, only when Grok unavailable)
-            # Two searches: keywords for broad topic sentiment + contract title
-            # for people specifically discussing the Polymarket bet
-            if self.x_mirror and self.x_mirror.enabled:
-                try:
+                posts.extend(grok_results)
+                logger.info(f"Collected {len(grok_results)} Grok X posts "
+                            f"({keyword_count} keyword + {title_new} title-search)")
+            except Exception as e:
+                logger.error(f"Error collecting Grok data: {e}")
+
+        # Collect X mirror posts (free fallback, only when Grok unavailable)
+        # Two searches: keywords for broad topic sentiment + contract title
+        # for people specifically discussing the Polymarket bet
+        # NOTE: Playwright is NOT thread-safe — serialize with lock
+        if self.x_mirror and self.x_mirror.enabled:
+            try:
+                with self._x_mirror_lock:
                     # Search 1: keyword-based (broad topic)
                     search_query = ' '.join(keywords[:3])
                     mirror_results = self.x_mirror.search_posts(query=search_query)
@@ -541,82 +546,137 @@ class DataCollectionAgent:
                     title_query = question[:120].rstrip('?').strip()
                     title_results = self.x_mirror.search_posts(query=title_query)
 
-                    # Deduplicate by post_id before merging
-                    keyword_count = len(mirror_results)
-                    seen_ids = {p['post_id'] for p in mirror_results}
-                    title_new = 0
-                    for p in title_results:
-                        if p['post_id'] not in seen_ids:
-                            mirror_results.append(p)
-                            seen_ids.add(p['post_id'])
-                            title_new += 1
+                # Deduplicate by post_id before merging (outside lock — no Playwright needed)
+                keyword_count = len(mirror_results)
+                seen_ids = {p['post_id'] for p in mirror_results}
+                title_new = 0
+                for p in title_results:
+                    if p['post_id'] not in seen_ids:
+                        mirror_results.append(p)
+                        seen_ids.add(p['post_id'])
+                        title_new += 1
 
-                    posts.extend(mirror_results)
-                    logger.info(f"Collected {len(mirror_results)} X mirror posts "
-                                f"({keyword_count} keyword + {title_new} title-search)")
-                except Exception as e:
-                    logger.error(f"Error collecting X mirror data: {e}")
-
-            # Collect Reddit mirror posts (free, no API key)
-            if self.reddit_mirror and self.reddit_mirror.enabled:
-                try:
-                    search_query = ' '.join(keywords[:3])
-                    reddit_results = self.reddit_mirror.search_posts(query=search_query, limit=10)
-                    posts.extend(reddit_results)
-                    logger.info(f"Collected {len(reddit_results)} Reddit mirror posts")
-                except Exception as e:
-                    logger.error(f"Error collecting Reddit mirror data: {e}")
-
-            # Collect GDELT geopolitical news (free, no key required)
-            # Keyword-only — GDELT indexes news articles, not betting markets,
-            # so contract title search won't match news headlines
-            if self.gdelt and self.gdelt.enabled:
-                try:
-                    search_query = ' '.join(keywords[:3])
-                    gdelt_results = self.gdelt.search_news(query=search_query, days_back=3)
-                    posts.extend(gdelt_results)
-                    logger.info(f"Collected {len(gdelt_results)} GDELT articles")
-                except Exception as e:
-                    logger.error(f"Error collecting GDELT data: {e}")
-
-            # Collect Polymarket comments (uses existing API, always available)
-            try:
-                poly_contract_id = contract.get('contract_id', '')
-                if poly_contract_id:
-                    poly_comments = self.polymarket.get_market_comments(
-                        condition_id=poly_contract_id, limit=30
-                    )
-                    posts.extend(poly_comments)
-                    if poly_comments:
-                        logger.info(f"Collected {len(poly_comments)} Polymarket comments")
+                posts.extend(mirror_results)
+                logger.info(f"Collected {len(mirror_results)} X mirror posts "
+                            f"({keyword_count} keyword + {title_new} title-search)")
             except Exception as e:
-                logger.debug(f"Error collecting Polymarket comments: {e}")
+                logger.error(f"Error collecting X mirror data: {e}")
 
-            # Collect Manifold comments (free, cross-reference matching markets)
-            if self.manifold and self.manifold.enabled:
-                try:
-                    # Search for matching Manifold market to get its comments
-                    search_query = ' '.join(keywords[:3])
-                    manifold_markets = self.manifold.search_markets(query=search_query, limit=3)
-                    for mm in manifold_markets:
-                        mm_id = mm.get('market_id', '')
-                        if mm_id:
-                            manifold_comments = self.manifold.get_market_comments(
-                                market_id=mm_id, limit=20
-                            )
-                            posts.extend(manifold_comments)
-                    total_mc = sum(1 for p in posts if p.get('platform') == 'manifold_comment')
-                    if total_mc:
-                        logger.info(f"Collected {total_mc} Manifold comments")
-                except Exception as e:
-                    logger.debug(f"Error collecting Manifold comments: {e}")
+        # Collect Reddit mirror posts (free, no API key)
+        if self.reddit_mirror and self.reddit_mirror.enabled:
+            try:
+                search_query = ' '.join(keywords[:3])
+                reddit_results = self.reddit_mirror.search_posts(query=search_query, limit=10)
+                posts.extend(reddit_results)
+                logger.info(f"Collected {len(reddit_results)} Reddit mirror posts")
+            except Exception as e:
+                logger.error(f"Error collecting Reddit mirror data: {e}")
 
-            # Store posts in database
-            if posts:
+        # Collect GDELT geopolitical news (free, no key required)
+        # Keyword-only — GDELT indexes news articles, not betting markets,
+        # so contract title search won't match news headlines
+        if self.gdelt and self.gdelt.enabled:
+            try:
+                search_query = ' '.join(keywords[:3])
+                gdelt_results = self.gdelt.search_news(query=search_query, days_back=3)
+                posts.extend(gdelt_results)
+                logger.info(f"Collected {len(gdelt_results)} GDELT articles")
+            except Exception as e:
+                logger.error(f"Error collecting GDELT data: {e}")
+
+        # Collect Polymarket comments (uses existing API, always available)
+        try:
+            poly_contract_id = contract.get('contract_id', '')
+            if poly_contract_id:
+                poly_comments = self.polymarket.get_market_comments(
+                    condition_id=poly_contract_id, limit=30
+                )
+                posts.extend(poly_comments)
+                if poly_comments:
+                    logger.info(f"Collected {len(poly_comments)} Polymarket comments")
+        except Exception as e:
+            logger.debug(f"Error collecting Polymarket comments: {e}")
+
+        # Collect Manifold comments (free, cross-reference matching markets)
+        if self.manifold and self.manifold.enabled:
+            try:
+                # Search for matching Manifold market to get its comments
+                search_query = ' '.join(keywords[:3])
+                manifold_markets = self.manifold.search_markets(query=search_query, limit=3)
+                for mm in manifold_markets:
+                    mm_id = mm.get('market_id', '')
+                    if mm_id:
+                        manifold_comments = self.manifold.get_market_comments(
+                            market_id=mm_id, limit=20
+                        )
+                        posts.extend(manifold_comments)
+                total_mc = sum(1 for p in posts if p.get('platform') == 'manifold_comment')
+                if total_mc:
+                    logger.info(f"Collected {total_mc} Manifold comments")
+            except Exception as e:
+                logger.debug(f"Error collecting Manifold comments: {e}")
+
+        # Store posts in database (serialized via lock for session safety)
+        if posts:
+            with self._db_lock:
                 stored_posts = self._store_social_posts(posts, contract_id)
-                results[contract_id] = stored_posts
+            return (contract_id, stored_posts)
 
-            logger.info(f"Collected {len(posts)} social posts for contract {contract_id}")
+        return (contract_id, posts)
+
+    def collect_social_media_data(self, contracts: List[Dict]) -> Dict[str, List[Dict]]:
+        """
+        Collect social media posts related to contracts using parallel processing.
+
+        Processes up to 3 contracts concurrently via ThreadPoolExecutor.
+        X Mirror (Playwright) calls are serialized via lock. DB writes are
+        also serialized to protect SQLAlchemy sessions.
+
+        Args:
+            contracts: List of contract dictionaries
+
+        Returns:
+            Dictionary mapping contract IDs to social posts
+        """
+        logger.info(f"Starting social media data collection for {len(contracts)} contracts...")
+
+        # Reset per-cycle state BEFORE spawning threads
+        # (time budgets, circuit breakers, stats)
+        if self.x_mirror and self.x_mirror.enabled:
+            self.x_mirror.reset_run_stats()
+        if self.tavily and self.tavily.enabled:
+            self.tavily.reset_cycle()
+        if self.gdelt and self.gdelt.enabled:
+            self.gdelt.reset_cycle()
+
+        results = {}
+        hours_back = self.settings.data_collection_lookback_hours
+
+        if not contracts:
+            return results
+
+        # Process contracts in parallel (cap at 3 to respect rate limits)
+        max_workers = min(3, len(contracts))
+        logger.info(f"Processing contracts with {max_workers} parallel workers")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._collect_for_contract, contract, hours_back): contract
+                for contract in contracts
+            }
+            for future in concurrent.futures.as_completed(futures):
+                contract = futures[future]
+                try:
+                    contract_id, posts = future.result()
+                    if posts:
+                        results[contract_id] = posts
+                    logger.info(f"Collected {len(posts)} social posts for contract {contract_id}")
+                except Exception as e:
+                    logger.error(f"Error collecting for {contract.get('question', '')[:50]}: {e}")
+
+        # Log X mirror performance summary for this cycle
+        if self.x_mirror and self.x_mirror.enabled:
+            self.x_mirror.log_run_summary()
 
         logger.info(f"Social media collection complete: {sum(len(p) for p in results.values())} total posts")
         return results

@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Pricing Gap Detection - Tavares & White</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg-dark: #0a0a0f;
+    --bg-card: #12121a;
+    --bg-accent: #1a1a2e;
+    --text-primary: #e8e8f0;
+    --text-secondary: #9898b0;
+    --text-muted: #606080;
+    --accent-blue: #4f8ff7;
+    --accent-purple: #8b5cf6;
+    --accent-green: #10b981;
+    --accent-red: #ef4444;
+    --accent-orange: #f59e0b;
+    --accent-cyan: #06b6d4;
+    --gradient-main: linear-gradient(135deg, #4f8ff7, #8b5cf6);
+    --gradient-warm: linear-gradient(135deg, #f59e0b, #ef4444);
+    --gradient-cool: linear-gradient(135deg, #06b6d4, #10b981);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .slide {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    padding: 60px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide.active { display: flex; flex-direction: column; }
+
+  /* ── Title Slide ─────────────────── */
+  .slide-title {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a0f 70%);
+  }
+
+  .slide-title h1 {
+    font-size: 2.8em;
+    font-weight: 800;
+    background: var(--gradient-main);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+
+  .slide-title .subtitle {
+    font-size: 1.3em;
+    color: var(--text-secondary);
+    font-weight: 300;
+    margin-bottom: 40px;
+    max-width: 800px;
+  }
+
+  .slide-title .authors {
+    font-size: 1.1em;
+    color: var(--accent-blue);
+    font-weight: 500;
+  }
+
+  .slide-title .meta {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-top: 8px;
+  }
+
+  /* ── Content Slides ─────────────── */
+  .slide-header {
+    margin-bottom: 40px;
+    flex-shrink: 0;
+  }
+
+  .slide-header h2 {
+    font-size: 2.2em;
+    font-weight: 700;
+    background: var(--gradient-main);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+
+  .slide-header .slide-tag {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+
+  .slide-body { flex: 1; display: flex; gap: 40px; align-items: flex-start; }
+  .slide-body.centered { align-items: center; justify-content: center; }
+  .slide-body.col { flex-direction: column; gap: 24px; }
+
+  .col-left, .col-right { flex: 1; }
+
+  /* ── Cards ──────────────────────── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 16px;
+  }
+
+  .card-glow-blue { border-left: 3px solid var(--accent-blue); }
+  .card-glow-purple { border-left: 3px solid var(--accent-purple); }
+  .card-glow-green { border-left: 3px solid var(--accent-green); }
+  .card-glow-red { border-left: 3px solid var(--accent-red); }
+  .card-glow-orange { border-left: 3px solid var(--accent-orange); }
+
+  .card h3 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+  }
+
+  .card p, .card li {
+    font-size: 0.95em;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .card ul { list-style: none; padding: 0; }
+  .card ul li::before {
+    content: "\25B8 ";
+    color: var(--accent-blue);
+    font-weight: bold;
+  }
+
+  /* ── Stat Grid ──────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    width: 100%;
+  }
+
+  .stat-box {
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: center;
+  }
+
+  .stat-box .stat-value {
+    font-size: 2.8em;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .stat-box .stat-label {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .blue { color: var(--accent-blue); }
+  .purple { color: var(--accent-purple); }
+  .green { color: var(--accent-green); }
+  .red { color: var(--accent-red); }
+  .orange { color: var(--accent-orange); }
+  .cyan { color: var(--accent-cyan); }
+
+  /* ── Pipeline Diagram ───────────── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .pipe-node {
+    background: var(--bg-card);
+    border: 2px solid var(--accent-blue);
+    border-radius: 12px;
+    padding: 16px 24px;
+    text-align: center;
+    min-width: 160px;
+  }
+
+  .pipe-node.active-node { border-color: var(--accent-green); background: rgba(16,185,129,0.1); }
+  .pipe-node.error-node { border-color: var(--accent-red); background: rgba(239,68,68,0.1); }
+
+  .pipe-node .node-title { font-weight: 700; font-size: 0.9em; }
+  .pipe-node .node-detail { font-size: 0.75em; color: var(--text-muted); margin-top: 4px; }
+  .pipe-arrow { font-size: 1.5em; color: var(--text-muted); }
+
+  /* ── Table ──────────────────────── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 12px 16px;
+    background: var(--bg-accent);
+    color: var(--accent-blue);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.8em;
+  }
+
+  .data-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+  }
+
+  .data-table tr:hover td { background: rgba(79,143,247,0.05); }
+
+  /* ── Chart containers ───────────── */
+  .chart-container {
+    width: 100%;
+    height: 340px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 20px;
+    position: relative;
+  }
+
+  /* ── Callout ────────────────────── */
+  .callout {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 16px 0;
+  }
+
+  .callout.info {
+    background: rgba(79,143,247,0.08);
+    border-color: rgba(79,143,247,0.3);
+  }
+
+  .callout.success {
+    background: rgba(16,185,129,0.08);
+    border-color: rgba(16,185,129,0.3);
+  }
+
+  .callout h4 { font-size: 1em; margin-bottom: 8px; }
+  .callout p { font-size: 0.9em; color: var(--text-secondary); line-height: 1.6; }
+
+  /* ── Progress bar ───────────────── */
+  .progress-bar {
+    background: var(--bg-accent);
+    border-radius: 8px;
+    height: 12px;
+    width: 100%;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.8s ease;
+  }
+
+  /* ── Navigation ─────────────────── */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background: rgba(10,10,15,0.95);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px;
+    z-index: 100;
+  }
+
+  .nav-bar button {
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.85em;
+    transition: all 0.2s;
+  }
+
+  .nav-bar button:hover { border-color: var(--accent-blue); }
+  .slide-counter { color: var(--text-muted); font-size: 0.85em; }
+
+  /* ── Animations ─────────────────── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .slide.active .animate {
+    animation: fadeInUp 0.6s ease forwards;
+    opacity: 0;
+  }
+
+  .slide.active .delay-1 { animation-delay: 0.1s; }
+  .slide.active .delay-2 { animation-delay: 0.2s; }
+  .slide.active .delay-3 { animation-delay: 0.3s; }
+  .slide.active .delay-4 { animation-delay: 0.4s; }
+  .slide.active .delay-5 { animation-delay: 0.5s; }
+  .slide.active .delay-6 { animation-delay: 0.6s; }
+
+  /* ── Equation ───────────────────── */
+  .equation {
+    background: var(--bg-accent);
+    border-radius: 12px;
+    padding: 20px 32px;
+    text-align: center;
+    font-size: 1.2em;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-cyan);
+    margin: 16px 0;
+  }
+
+  /* ── Code block ─────────────────── */
+  .code-block {
+    background: #1e1e2e;
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8em;
+    line-height: 1.7;
+    color: #cdd6f4;
+    overflow-x: auto;
+  }
+
+  .code-block .keyword { color: #cba6f7; }
+  .code-block .string { color: #a6e3a1; }
+  .code-block .comment { color: #585b70; font-style: italic; }
+  .code-block .number { color: #fab387; }
+  .code-block .func { color: #89b4fa; }
+
+  /* ── Tag/Badge ──────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .badge-blue { background: rgba(79,143,247,0.15); color: var(--accent-blue); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+  .badge-green { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+  .badge-purple { background: rgba(139,92,246,0.15); color: var(--accent-purple); }
+
+  /* ── Responsive for projectors ──── */
+  @media (max-width: 1200px) {
+    .slide { padding: 40px 50px; }
+    .slide-title h1 { font-size: 2.2em; }
+    .stat-box .stat-value { font-size: 2.2em; }
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .full-width { width: 100%; }
+
+  .speaker-notes { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 1: TITLE -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-title active" id="slide-1">
+  <div class="animate delay-1">
+    <div class="meta" style="margin-bottom:20px;">STEVENS INSTITUTE OF TECHNOLOGY &mdash; BIG DATA TECHNOLOGIES</div>
+  </div>
+  <h1 class="animate delay-2">Multi-Agent Pricing Gap Detection<br>in Prediction Markets</h1>
+  <div class="subtitle animate delay-3">
+    Can AI find what the market missed? A big data architecture for sentiment-driven inefficiency discovery on Polymarket.
+  </div>
+  <div class="authors animate delay-4">Nicholas Tavares &nbsp;&bull;&nbsp; Matthew White</div>
+  <div class="meta animate delay-5">March 2026</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 2: THE QUESTION -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-2">
+  <div class="slide-header">
+    <div class="slide-tag">The Question</div>
+    <h2>What Are Prediction Markets?</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="card card-glow-blue animate delay-1">
+        <h3>Markets for Beliefs</h3>
+        <p>Prediction markets let people trade contracts on future events. The price <strong>is</strong> the crowd's probability estimate.</p>
+        <p style="margin-top:12px;"><span class="blue" style="font-size:1.4em;font-weight:700;">$0.65</span> = the market thinks there's a <strong>65% chance</strong> the event happens.</p>
+      </div>
+      <div class="card card-glow-purple animate delay-2">
+        <h3>Polymarket</h3>
+        <ul>
+          <li>Largest decentralized prediction market</li>
+          <li>$1B+ volume during 2024 election</li>
+          <li>Polygon blockchain, transparent order book</li>
+          <li>Politics, sports, crypto, culture, memes</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-green animate delay-3">
+        <h3>Our Central Question</h3>
+        <p style="font-size:1.1em; color: var(--text-primary); font-weight:500;">
+          Can a multi-agent AI system detect pricing mistakes in prediction markets by analyzing social media sentiment <em>before</em> the market corrects them?
+        </p>
+      </div>
+      <div class="callout info animate delay-4">
+        <h4>Why This Matters</h4>
+        <p>If prediction markets are efficient, they're powerful forecasting tools. If they're not, there's money on the table. Either answer is valuable.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 3: SYSTEM ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-3">
+  <div class="slide-header">
+    <div class="slide-tag">Architecture</div>
+    <h2>How We Built It</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="pipeline animate delay-1">
+      <div class="pipe-node active-node">
+        <div class="node-title">Agent 1</div>
+        <div class="node-detail">Data Collection</div>
+        <div class="node-detail" style="color:var(--accent-green);">8 Sources</div>
+      </div>
+      <div class="pipe-arrow">&rarr;</div>
+      <div class="pipe-node active-node">
+        <div class="node-title">Agent 2</div>
+        <div class="node-detail">Sentiment Analysis</div>
+        <div class="node-detail" style="color:var(--accent-green);">3-Model Ensemble</div>
+      </div>
+      <div class="pipe-arrow">&rarr;</div>
+      <div class="pipe-node active-node">
+        <div class="node-title">Agent 3</div>
+        <div class="node-detail">Gap Detection</div>
+        <div class="node-detail" style="color:var(--accent-green);">4 Algorithms</div>
+      </div>
+      <div class="pipe-arrow">&rarr;</div>
+      <div class="pipe-node active-node">
+        <div class="node-title">Agent 4</div>
+        <div class="node-detail">Reporting</div>
+        <div class="node-detail" style="color:var(--accent-green);">Ranked Output</div>
+      </div>
+    </div>
+    <div class="two-col animate delay-2" style="margin-top: 20px;">
+      <div class="card card-glow-blue">
+        <h3>Multi-Agent Framework (CrewAI)</h3>
+        <ul>
+          <li>4 specialized AI agents, each with a defined role</li>
+          <li>Sequential pipeline &mdash; output of each feeds the next</li>
+          <li>LLM-powered reasoning at each stage (DeepSeek + Ollama)</li>
+          <li>Error isolation &mdash; one agent failing doesn't crash the system</li>
+        </ul>
+      </div>
+      <div class="card card-glow-purple">
+        <h3>Big Data Infrastructure</h3>
+        <ul>
+          <li>PostgreSQL &mdash; 9 tables, 20-connection pool</li>
+          <li>SQLAlchemy ORM for type-safe persistence</li>
+          <li>JSONB evidence storage for flexible gap metadata</li>
+          <li>FastAPI dashboard with 8 REST endpoints</li>
+          <li>Pydantic configuration management</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 4: DATA SOURCES -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-4">
+  <div class="slide-header">
+    <div class="slide-tag">Big Data</div>
+    <h2>8 Heterogeneous Data Sources</h2>
+  </div>
+  <div class="slide-body col">
+    <table class="data-table animate delay-1">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Type</th>
+          <th>Protocol</th>
+          <th>Cost</th>
+          <th>Status</th>
+          <th>Volume/Contract</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Polymarket Gamma API</strong></td><td>Market Data</td><td>REST (paginated)</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>625 contracts</td></tr>
+        <tr><td><strong>Bluesky</strong></td><td>Social Media</td><td>AT Protocol SDK</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>47-75 posts</td></tr>
+        <tr><td><strong>GDELT</strong></td><td>Global News</td><td>REST</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>0-25 articles</td></tr>
+        <tr><td><strong>RSS Feeds</strong></td><td>News (Reuters, BBC, AP)</td><td>feedparser</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>0-8 articles</td></tr>
+        <tr><td><strong>Reddit Mirror</strong></td><td>Social Media</td><td>Redlib scraping</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>10 posts</td></tr>
+        <tr><td><strong>X/Twitter Mirror</strong></td><td>Social Media</td><td>xcancel scraping</td><td>Free</td><td><span class="badge badge-green">Active</span></td><td>Variable</td></tr>
+        <tr><td><strong>Tavily Web Search</strong></td><td>Web Search</td><td>REST</td><td>Paid</td><td><span class="badge badge-red">Failed</span></td><td>HTTP 432</td></tr>
+        <tr><td><strong>Grok / xAI</strong></td><td>X Sentiment</td><td>REST</td><td>Paid</td><td><span class="badge badge-red">Disabled</span></td><td>No API key</td></tr>
+      </tbody>
+    </table>
+    <div class="callout info animate delay-2">
+      <h4>Dual Search Strategy</h4>
+      <p>Each source performs <strong>two searches per contract</strong>: keyword extraction search (broad) + full contract title search (specific). This captures both general topic sentiment and bet-specific discussion.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 5: SENTIMENT ANALYSIS -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-5">
+  <div class="slide-header">
+    <div class="slide-tag">NLP</div>
+    <h2>Ensemble Sentiment Analysis</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="equation animate delay-1">
+        S<sub>ensemble</sub> = 0.50&middot;S<sub>LLM</sub> + 0.25&middot;S<sub>VADER</sub> + 0.25&middot;S<sub>TextBlob</sub>
+      </div>
+      <div class="card card-glow-blue animate delay-2">
+        <h3>Why Three Models?</h3>
+        <ul>
+          <li><strong>DeepSeek LLM (50%)</strong> &mdash; Captures context, sarcasm, conditional statements, domain knowledge</li>
+          <li><strong>VADER (25%)</strong> &mdash; Rule-based lexicon optimized for social media, 7,517 features</li>
+          <li><strong>TextBlob (25%)</strong> &mdash; Pattern-based polarity, trained on reviews, complementary to VADER</li>
+        </ul>
+        <p style="margin-top: 12px;">Lexicon models <strong>regularize</strong> the LLM: when DeepSeek hallucinates extreme sentiment, VADER and TextBlob anchor the score.</p>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-purple animate delay-3">
+        <h3>Batch Processing Architecture</h3>
+        <ul>
+          <li>5 posts per LLM call (80% API cost reduction)</li>
+          <li>Structured JSON output with repair logic</li>
+          <li>Fallback: single-post analysis on batch failure</li>
+          <li>Throughput: ~0.9 seconds per post</li>
+        </ul>
+      </div>
+      <div class="card card-glow-green animate delay-4">
+        <h3>Rolling Sentiment Windows</h3>
+        <ul>
+          <li><strong>6-hour</strong> &mdash; Short-term momentum</li>
+          <li><strong>12-hour</strong> &mdash; Medium-term trend</li>
+          <li><strong>24-hour</strong> &mdash; Baseline sentiment</li>
+        </ul>
+        <p style="margin-top:8px;">Each window computes: average score, positive ratio, sentiment velocity (trend).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 6: GAP DETECTION -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-6">
+  <div class="slide-header">
+    <div class="slide-tag">Algorithms</div>
+    <h2>Four Gap Detection Strategies</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="two-col animate delay-1">
+      <div class="card card-glow-blue">
+        <h3><span class="badge badge-blue">Type 1</span> Sentiment-Probability Mismatch</h3>
+        <div class="equation" style="font-size:0.9em; margin:12px 0;">P<sub>implied</sub> = clamp(P<sub>market</sub> + S&#x0305; &middot; 0.4, 0.05, 0.95)</div>
+        <p>Flag when |P<sub>implied</sub> - P<sub>market</sub>| &ge; 4%. Converts aggregate social sentiment into a probability and compares against market odds.</p>
+      </div>
+      <div class="card card-glow-purple">
+        <h3><span class="badge badge-purple">Type 2</span> Information Asymmetry</h3>
+        <p>Detects when sentiment has <strong>shifted</strong> (last 3h vs previous 3h) but market odds <strong>haven't moved</strong>. Flags delayed information incorporation.</p>
+        <p style="margin-top:8px;">Threshold: sentiment shift &ge; 0.10 with no corresponding odds movement.</p>
+      </div>
+    </div>
+    <div class="two-col animate delay-2">
+      <div class="card card-glow-green">
+        <h3><span class="badge badge-green">Type 3</span> Historical Pattern Deviation</h3>
+        <div class="equation" style="font-size:0.9em; margin:12px 0;">z = (P<sub>current</sub> - P&#x0305;<sub>historical</sub>) / &sigma;<sub>P</sub></div>
+        <p>Z-score outlier detection. Flags contracts where current odds are &ge; 1.5 standard deviations from their historical mean.</p>
+      </div>
+      <div class="card card-glow-orange">
+        <h3><span class="badge badge-purple">Type 4</span> Cross-Market Arbitrage</h3>
+        <p>Searches Kalshi + Manifold Markets for matching contracts. Uses <strong>LLM-confirmed semantic matching</strong> (conf &ge; 0.6) to avoid false positives.</p>
+        <p style="margin-top:8px;">Threshold: cross-platform edge &ge; 10%.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 7: DATABASE SCHEMA -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-7">
+  <div class="slide-header">
+    <div class="slide-tag">Big Data</div>
+    <h2>Database Architecture</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="stat-grid animate delay-1" style="grid-template-columns: repeat(5, 1fr);">
+      <div class="stat-box"><div class="stat-value blue">9</div><div class="stat-label">Tables</div></div>
+      <div class="stat-box"><div class="stat-value purple">625</div><div class="stat-label">Contracts</div></div>
+      <div class="stat-box"><div class="stat-value green">32,791</div><div class="stat-label">Social Posts</div></div>
+      <div class="stat-box"><div class="stat-value orange">12,185</div><div class="stat-label">Sentiments</div></div>
+      <div class="stat-box"><div class="stat-value cyan">30</div><div class="stat-label">Gaps Found</div></div>
+    </div>
+    <div class="two-col animate delay-2">
+      <div>
+        <table class="data-table">
+          <thead><tr><th>Table</th><th>Records</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>contracts</code></td><td>625</td><td>Full market universe</td></tr>
+            <tr><td><code>social_posts</code></td><td>32,791</td><td>Multi-platform posts</td></tr>
+            <tr><td><code>sentiment_analysis</code></td><td>12,185</td><td>Ensemble scores</td></tr>
+            <tr><td><code>detected_gaps</code></td><td>30</td><td>Pricing anomalies</td></tr>
+            <tr><td><code>historical_odds</code></td><td>8</td><td>Price time series</td></tr>
+            <tr><td><code>sentiment_snapshots</code></td><td>&mdash;</td><td>Rolling 6/12/24h</td></tr>
+            <tr><td><code>cycle_runs</code></td><td>4</td><td>Execution audit</td></tr>
+            <tr><td><code>backtest_results</code></td><td>0</td><td>Validation</td></tr>
+            <tr><td><code>system_logs</code></td><td>&mdash;</td><td>Audit trail</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="card card-glow-blue">
+          <h3>Big Data Design Patterns</h3>
+          <ul>
+            <li><strong>Connection pooling</strong> &mdash; 20-connection SQLAlchemy pool</li>
+            <li><strong>JSONB evidence</strong> &mdash; Schema-flexible gap metadata</li>
+            <li><strong>SHA-256 dedup</strong> &mdash; Unique post_id constraint</li>
+            <li><strong>Store-all, analyze-selectively</strong> &mdash; 625 stored, top 50 analyzed</li>
+            <li><strong>Batch sentiment</strong> &mdash; 5 posts/LLM call (80% cost reduction)</li>
+            <li><strong>Temporal windowing</strong> &mdash; 6h/12h/24h rolling aggregates</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 8: THE NUMBERS -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-8">
+  <div class="slide-header">
+    <div class="slide-tag">Results</div>
+    <h2>What We Found</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="stat-grid animate delay-1">
+      <div class="stat-box"><div class="stat-value blue">4</div><div class="stat-label">Cycles Completed</div></div>
+      <div class="stat-box"><div class="stat-value purple">30</div><div class="stat-label">Gaps Detected</div></div>
+      <div class="stat-box"><div class="stat-value red">0</div><div class="stat-label">Validated</div></div>
+      <div class="stat-box"><div class="stat-value orange">96.7%</div><div class="stat-label">Sentiment Mismatch</div></div>
+      <div class="stat-box"><div class="stat-value green">~2hrs</div><div class="stat-label">Per Cycle</div></div>
+    </div>
+    <div class="two-col animate delay-2">
+      <div>
+        <table class="data-table">
+          <thead><tr><th>Category</th><th>Gaps</th><th>Avg Conf</th><th>Avg Edge</th></tr></thead>
+          <tbody>
+            <tr><td>NHL Stanley Cup</td><td>15</td><td>53</td><td>4.7%</td></tr>
+            <tr><td>Political/Geopolitical</td><td>5</td><td>70</td><td>10.5%</td></tr>
+            <tr><td>Entertainment/Meme</td><td>4</td><td>67</td><td>17.3%</td></tr>
+            <tr><td>Sports (other)</td><td>4</td><td>44</td><td>5.6%</td></tr>
+            <tr><td>Technology</td><td>1</td><td>50</td><td>4.4%</td></tr>
+            <tr><td>NBA</td><td>1</td><td>44</td><td>4.9%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="callout animate delay-3">
+          <h4>The Honest Truth</h4>
+          <p>Half the gaps are NHL teams where <strong>fans think their team will win</strong> but the market correctly prices them at near-zero. The #1 gap (98% confidence) is "Will Jesus Christ return before GTA VI?" That's not alpha. That's a meme.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 9: THE OPTIMISM BIAS -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-9">
+  <div class="slide-header">
+    <div class="slide-tag">Key Finding</div>
+    <h2>The Social Media Optimism Bias</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="card card-glow-red animate delay-1">
+        <h3>What We Expected</h3>
+        <p>Social sentiment reveals information the market hasn't priced yet &rarr; sentiment-implied odds diverge from market odds &rarr; detectable pricing gap &rarr; profit.</p>
+      </div>
+      <div class="card card-glow-orange animate delay-2">
+        <h3>What Actually Happened</h3>
+        <p>Social media is <strong>structurally biased toward optimism</strong>. Fans post about their team winning. Enthusiasts post about their candidate winning. This isn't information &mdash; it's selection bias in the data-generating process.</p>
+        <p style="margin-top:10px;">29 of 30 detected gaps = social media is more bullish than the market. The market is <em>right</em>, not wrong.</p>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-blue animate delay-3" style="padding: 20px;">
+        <h3 style="text-align:center; margin-bottom:16px;">Market vs. Sentiment-Implied Odds</h3>
+        <div style="position:relative; height:300px; padding: 10px;">
+          <canvas id="scatterChart"></canvas>
+        </div>
+      </div>
+      <p class="animate delay-4" style="font-size:0.85em; color:var(--text-muted); text-align:center; margin-top:8px;">
+        Points above the diagonal = bullish sentiment bias. The NHL cluster (bottom-left) shows fans consistently overestimating their team's chances.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 10: WHY IT DOESN'T WORK -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-10">
+  <div class="slide-header">
+    <div class="slide-tag">Analysis</div>
+    <h2>Five Reasons This Doesn't Work</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="three-col animate delay-1">
+      <div class="card card-glow-red">
+        <h3>1. Speed Mismatch</h3>
+        <p>Polymarket incorporates information in <strong>minutes</strong>. Our system runs <strong>once per day</strong>. By the time we detect a gap, it's been closed for hours.</p>
+        <div class="equation" style="font-size:0.7em; margin-top:12px;">&tau;<sub>detection</sub> &asymp; 12-24h &gt;&gt; &tau;<sub>market</sub> &asymp; minutes</div>
+      </div>
+      <div class="card card-glow-orange">
+        <h3>2. No Info Advantage</h3>
+        <p>We read the <strong>same Reddit threads, same news, same tweets</strong> as Polymarket traders. No proprietary data = no information edge.</p>
+      </div>
+      <div class="card card-glow-purple">
+        <h3>3. Sentiment &ne; Information</h3>
+        <p>Fan enthusiasm &ne; informed probability. Our &alpha; = 0.4 mapping is <strong>uncalibrated</strong> &mdash; set by intuition, not backtested.</p>
+      </div>
+    </div>
+    <div class="two-col animate delay-2">
+      <div class="card card-glow-blue">
+        <h3>4. Insufficient Historical Data</h3>
+        <p>Only <strong>8 historical odds records</strong> in the database. Z-score pattern detection needs hundreds of data points. Information asymmetry detection needs hours of rolling history. We had neither.</p>
+      </div>
+      <div class="card card-glow-green">
+        <h3>5. Liquidity Constraint</h3>
+        <p>Most gaps were on <strong>near-zero liquidity</strong> contracts (NHL longshots at 0.1%). Any trade would move the price more than the edge. You can't arb what you can't trade.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 11: MARKET EFFICIENCY -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-11">
+  <div class="slide-header">
+    <div class="slide-tag">Theory</div>
+    <h2>Evidence for Weak-Form Market Efficiency</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="card card-glow-blue animate delay-1">
+        <h3>Kyle's Model (1985)</h3>
+        <p>In transparent order book markets, the rate &lambda; at which market makers learn from informed trading approaches <strong>instantaneous</strong>. Polymarket's blockchain-based transparency makes this even more extreme &mdash; everyone sees every trade.</p>
+      </div>
+      <div class="card card-glow-purple animate delay-2">
+        <h3>What Our Data Shows</h3>
+        <ul>
+          <li>3 cycles with <strong>zero gaps</strong> detected (market correctly priced)</li>
+          <li>1 cycle with 30 gaps, all driven by <strong>optimism bias</strong></li>
+          <li>Zero validated predictions across all runs</li>
+          <li>The market was right; our sentiment was wrong</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-green animate delay-3">
+        <h3>Efficiency Spectrum</h3>
+        <div style="margin: 20px 0;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.8em;">
+            <span>Liquid contracts (elections, crypto)</span>
+            <span class="green">Highly Efficient</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:95%;background:var(--gradient-cool);"></div></div>
+        </div>
+        <div style="margin: 20px 0;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.8em;">
+            <span>Mid-tier (sports majors, geopolitics)</span>
+            <span class="orange">Moderately Efficient</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:72%;background:linear-gradient(135deg, #f59e0b, #ef4444);"></div></div>
+        </div>
+        <div style="margin: 20px 0;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.8em;">
+            <span>Long-tail (memes, niche, illiquid)</span>
+            <span class="red">Less Efficient</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:40%;background:var(--gradient-warm);"></div></div>
+        </div>
+        <p style="margin-top:20px; font-size:0.85em; color:var(--text-secondary);">Inefficiency exists in the long tail, but those markets are <strong>too illiquid to trade profitably</strong>. The efficiency frontier protects itself.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 12: WHAT IT WOULD TAKE -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-12">
+  <div class="slide-header">
+    <div class="slide-tag">Gap Analysis</div>
+    <h2>What We Have vs. What We'd Need</h2>
+  </div>
+  <div class="slide-body col">
+    <table class="data-table animate delay-1">
+      <thead>
+        <tr><th>Dimension</th><th>Current System</th><th>Viable System</th><th>Gap</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Frequency</strong></td>
+          <td>1x/day</td>
+          <td>Every 5-15 min</td>
+          <td><span class="red">96-288x faster</span></td>
+        </tr>
+        <tr>
+          <td><strong>Information Sources</strong></td>
+          <td>Public social media</td>
+          <td>Event feeds, filings, proprietary</td>
+          <td><span class="red">No edge</span></td>
+        </tr>
+        <tr>
+          <td><strong>Sentiment Calibration</strong></td>
+          <td>&alpha; = 0.4 (heuristic)</td>
+          <td>Source-specific calibration curves</td>
+          <td><span class="orange">Uncalibrated</span></td>
+        </tr>
+        <tr>
+          <td><strong>Market Universe</strong></td>
+          <td>625 contracts (broad)</td>
+          <td>10-20 liquid, catalyst-rich</td>
+          <td><span class="orange">Too broad</span></td>
+        </tr>
+        <tr>
+          <td><strong>Validation</strong></td>
+          <td>0 resolved predictions</td>
+          <td>30+ days tracked resolutions</td>
+          <td><span class="red">No feedback loop</span></td>
+        </tr>
+        <tr>
+          <td><strong>Historical Data</strong></td>
+          <td>8 odds records</td>
+          <td>Continuous tick history</td>
+          <td><span class="red">99.9% short</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout animate delay-2">
+      <h4>The Core Problem</h4>
+      <p>We built a <strong>beautiful real-time pipeline for a signal we haven't proven exists</strong>. The correct order: (1) prove signal in backtest, (2) estimate alpha after costs, (3) then build real-time. We did it backwards &mdash; and that's an honest, valuable lesson.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 13: FUTURE DIRECTION -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-13">
+  <div class="slide-header">
+    <div class="slide-tag">Future Work</div>
+    <h2>Prediction Markets as Equity Signal Features</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="card card-glow-green animate delay-1">
+        <h3>The Pivot: Don't Trade Polymarket &mdash; Use It</h3>
+        <p>Instead of trying to beat prediction markets, use their <strong>odds as input features</strong> for stock forecasting models. Polymarket prices on policy events encode real-time consensus probabilities that directly affect equity valuations.</p>
+      </div>
+      <div class="card card-glow-blue animate delay-2">
+        <h3>Example Features</h3>
+        <ul>
+          <li>Fed rate cut probability &rarr; rate-sensitive stocks</li>
+          <li>Tariff escalation odds &rarr; trade-exposed equities</li>
+          <li>Ceasefire probability &rarr; defense/energy sectors</li>
+          <li>Election outcome odds &rarr; policy-sensitive sectors</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-purple animate delay-3">
+        <h3>Why This Might Work</h3>
+        <ul>
+          <li><strong>Different market</strong> &mdash; equity traders don't systematically incorporate prediction market odds</li>
+          <li><strong>Forward-looking</strong> &mdash; unlike lagging economic indicators</li>
+          <li><strong>Incentive-aligned</strong> &mdash; unlike surveys or polls</li>
+          <li><strong>Continuously available</strong> &mdash; 24/7 real-time updating</li>
+          <li><strong>Our pipeline already collects this data</strong></li>
+        </ul>
+      </div>
+      <div class="callout success animate delay-4">
+        <h4>Integration Target: Temporal Fusion Transformers</h4>
+        <p>TFT models handle mixed-frequency inputs natively (daily stock prices + real-time prediction market odds) and provide interpretable attention weights showing which prediction market features drive equity forecasts.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 14: TECH STACK SUMMARY -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-14">
+  <div class="slide-header">
+    <div class="slide-tag">Engineering</div>
+    <h2>Full Technology Stack</h2>
+  </div>
+  <div class="slide-body col">
+    <div class="three-col animate delay-1">
+      <div class="card card-glow-blue">
+        <h3>AI / ML</h3>
+        <ul>
+          <li>CrewAI 0.28.8</li>
+          <li>LangChain 0.1.20</li>
+          <li>DeepSeek Chat API</li>
+          <li>Ollama (LLaMA 3.1 8B)</li>
+          <li>VADER Sentiment 3.3.2</li>
+          <li>TextBlob 0.18</li>
+        </ul>
+      </div>
+      <div class="card card-glow-purple">
+        <h3>Data / Backend</h3>
+        <ul>
+          <li>PostgreSQL 12+</li>
+          <li>SQLAlchemy 2.0.30</li>
+          <li>FastAPI 0.111.0</li>
+          <li>Pydantic 2.7.1</li>
+          <li>Pandas 2.2.2 / NumPy 1.26</li>
+          <li>Uvicorn (ASGI)</li>
+        </ul>
+      </div>
+      <div class="card card-glow-green">
+        <h3>Infrastructure</h3>
+        <ul>
+          <li>BeautifulSoup4 4.12.3</li>
+          <li>feedparser 6.0.11</li>
+          <li>ratelimit 2.2.1</li>
+          <li>httpx / aiohttp (async)</li>
+          <li>Rich 13.7.1 (console)</li>
+          <li>loguru 0.7.2</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stat-grid animate delay-2" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="stat-box"><div class="stat-value blue">~8,000</div><div class="stat-label">Lines of Code</div></div>
+      <div class="stat-box"><div class="stat-value purple">14</div><div class="stat-label">Service Modules</div></div>
+      <div class="stat-box"><div class="stat-value green">8</div><div class="stat-label">API Endpoints</div></div>
+      <div class="stat-box"><div class="stat-value orange">4</div><div class="stat-label">AI Agents</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 15: LESSONS & CONCLUSION -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-15">
+  <div class="slide-header">
+    <div class="slide-tag">Conclusion</div>
+    <h2>What We Learned</h2>
+  </div>
+  <div class="slide-body">
+    <div class="col-left">
+      <div class="card card-glow-green animate delay-1">
+        <h3>The Architecture Works</h3>
+        <p>8 data sources, 4 AI agents, ensemble NLP, 9-table PostgreSQL schema, FastAPI dashboard &mdash; production-grade big data pipeline that successfully processes 32K+ social posts across 625 contracts.</p>
+      </div>
+      <div class="card card-glow-red animate delay-2">
+        <h3>The Signal Doesn't (Yet)</h3>
+        <p>Social media sentiment =/= market-beating information. We discovered the <strong>optimism bias problem</strong> empirically &mdash; and that's a finding worth publishing, not a failure.</p>
+      </div>
+      <div class="card card-glow-blue animate delay-3">
+        <h3>Negative Results Are Results</h3>
+        <p>Proving that Polymarket is efficient against daily-frequency sentiment analysis is an <strong>empirical contribution to the prediction market literature</strong>. Most papers only publish wins.</p>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card card-glow-purple animate delay-4" style="background: linear-gradient(135deg, rgba(79,143,247,0.1), rgba(139,92,246,0.1));">
+        <h3 style="font-size:1.2em;">Key Takeaways</h3>
+        <ul style="font-size:1em; line-height:2;">
+          <li>Prediction markets price faster than we can detect</li>
+          <li>Sentiment &ne; information (optimism bias is real)</li>
+          <li>Prove the signal before building the system</li>
+          <li>The real value: prediction market odds as equity features</li>
+          <li>Big data infrastructure survives the pivot</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SLIDE 16: QUESTIONS -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="slide slide-title" id="slide-16">
+  <div class="animate delay-1">
+    <div class="meta" style="margin-bottom:20px;">THANK YOU</div>
+  </div>
+  <h1 class="animate delay-2">Questions?</h1>
+  <div class="subtitle animate delay-3">
+    Nicholas Tavares &nbsp;&bull;&nbsp; Matthew White
+  </div>
+  <div class="meta animate delay-4" style="margin-top: 30px;">
+    github.com/mwhite732/Polymarket_Agents
+  </div>
+  <div class="meta animate delay-5" style="margin-top: 10px; font-size: 0.8em;">
+    Stevens Institute of Technology &mdash; Big Data Technologies &mdash; March 2026
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- NAVIGATION -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="nav-bar">
+  <button onclick="prevSlide()">&larr; Previous</button>
+  <span class="slide-counter"><span id="current-slide">1</span> / <span id="total-slides">16</span></span>
+  <button onclick="nextSlide()">Next &rarr;</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- CHART.JS (CDN) -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<script>
+// ── Slide Navigation ──────────────────────────────────────
+let currentSlide = 1;
+const totalSlides = 16;
+
+function showSlide(n) {
+  document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+  currentSlide = Math.max(1, Math.min(n, totalSlides));
+  document.getElementById(`slide-${currentSlide}`).classList.add('active');
+  document.getElementById('current-slide').textContent = currentSlide;
+
+  // Init charts when their slide becomes active
+  if (currentSlide === 9) initScatterChart();
+}
+
+function nextSlide() { showSlide(currentSlide + 1); }
+function prevSlide() { showSlide(currentSlide - 1); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prevSlide(); }
+  if (e.key === 'Home') { e.preventDefault(); showSlide(1); }
+  if (e.key === 'End') { e.preventDefault(); showSlide(totalSlides); }
+});
+
+// ── Scatter Chart (Slide 9) ───────────────────────────────
+let scatterInitialized = false;
+function initScatterChart() {
+  if (scatterInitialized) return;
+  scatterInitialized = true;
+
+  const ctx = document.getElementById('scatterChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'NHL Longshots (Fan Bias)',
+          data: [
+            {x:0.05,y:5},{x:0.05,y:5},{x:0.15,y:5},{x:0.15,y:5},
+            {x:0.15,y:5},{x:0.15,y:5},{x:0.25,y:5},{x:0.35,y:5},
+            {x:0.45,y:5.01},{x:0.5,y:5},{x:2.05,y:7.1},{x:4.2,y:8.22},
+            {x:5.45,y:9.55},{x:0.3,y:5},{x:5.65,y:10.14}
+          ],
+          backgroundColor: 'rgba(79,143,247,0.7)',
+          pointRadius: 6,
+        },
+        {
+          label: 'Political/Geopolitical',
+          data: [
+            {x:52,y:42.06},{x:37.5,y:26.48},{x:54,y:44.57},
+            {x:61.5,y:51.03},{x:28.5,y:22.62}
+          ],
+          backgroundColor: 'rgba(239,68,68,0.7)',
+          pointRadius: 8,
+          pointStyle: 'rect',
+        },
+        {
+          label: 'Entertainment/Meme',
+          data: [
+            {x:48.5,y:2},{x:48.5,y:41.16},{x:59.5,y:68.85},{x:56.5,y:62.47}
+          ],
+          backgroundColor: 'rgba(16,185,129,0.7)',
+          pointRadius: 8,
+          pointStyle: 'triangle',
+        },
+        {
+          label: 'Sports (Other)',
+          data: [
+            {x:9.5,y:16.39},{x:17.5,y:24.16},{x:27.5,y:32.4},{x:70.05,y:74.57}
+          ],
+          backgroundColor: 'rgba(245,158,11,0.7)',
+          pointRadius: 8,
+          pointStyle: 'diamond',
+        },
+        {
+          label: 'Perfect Efficiency Line',
+          data: [{x:0,y:0},{x:80,y:80}],
+          type: 'line',
+          borderColor: 'rgba(255,255,255,0.2)',
+          borderDash: [5,5],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#9898b0', font: { size: 11 }, padding: 15, usePointStyle: true }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Market Odds (%)', color: '#9898b0' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#606080' },
+          min: 0, max: 80
+        },
+        y: {
+          title: { display: true, text: 'Sentiment-Implied Odds (%)', color: '#9898b0' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#606080' },
+          min: 0, max: 80
+        }
+      }
+    }
+  });
+}
+
+// Initialize
+document.getElementById('total-slides').textContent = totalSlides;
+</script>
+</body>
+</html>

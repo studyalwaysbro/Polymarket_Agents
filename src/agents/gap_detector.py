@@ -1,10 +1,14 @@
 """Gap Detection Agent - Identifies pricing inefficiencies in prediction markets."""
 
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import UUID
+
+sys.path.insert(0, str(Path.home() / ".api-monitor"))
 
 from crewai import Agent, Task
 from sqlalchemy import func
@@ -63,6 +67,15 @@ class GapDetectionAgent:
     def _invoke_llm(self, prompt: str) -> str:
         """Call LLM and return the response text, handling provider differences."""
         response = self.llm.invoke(prompt)
+        try:
+            from api_logger import log_api_call
+            meta = getattr(response, "response_metadata", {}) or {}
+            usage = meta.get("token_usage", {}) or {}
+            log_api_call("deepseek", "/chat/completions", project="polymarket-agents",
+                         tokens_in=usage.get("prompt_tokens", 0),
+                         tokens_out=usage.get("completion_tokens", 0))
+        except Exception:
+            pass
         if hasattr(response, 'content'):
             return response.content.strip()
         elif isinstance(response, str):

@@ -2,8 +2,12 @@
 
 import hashlib
 import json
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
+
+sys.path.insert(0, str(Path.home() / ".api-monitor"))
 
 from ..config import get_settings
 from ..utils.logger import get_logger
@@ -29,7 +33,8 @@ class GrokSentiment:
                 from openai import OpenAI
                 self.client = OpenAI(
                     api_key=self.settings.grok_api_key,
-                    base_url="https://api.x.ai/v1"
+                    base_url="https://api.x.ai/v1",
+                    timeout=30.0
                 )
                 logger.info("Grok X sentiment initialized")
             except ImportError:
@@ -81,6 +86,12 @@ Return ONLY valid JSON."""
                     }
                 ],
             )
+
+            try:
+                from api_logger import log_openai_response
+                log_openai_response("grok", response, project="polymarket-agents")
+            except Exception:
+                pass
 
             result_text = response.choices[0].message.content
 

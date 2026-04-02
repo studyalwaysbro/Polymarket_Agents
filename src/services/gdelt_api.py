@@ -29,8 +29,17 @@ class GDELTAPI:
         self.enabled = self.settings.enable_gdelt
         self.session = self._create_session()
 
+        # Circuit breaker: skip remaining searches after 2 consecutive 429s
+        self._consecutive_429s = 0
+        self._quota_exhausted = False
+
         if self.enabled:
             logger.info("GDELT API initialized (free, no key required)")
+
+    def reset_cycle(self):
+        """Reset circuit breaker at the start of each collection cycle."""
+        self._consecutive_429s = 0
+        self._quota_exhausted = False
 
     def _create_session(self) -> requests.Session:
         session = requests.Session()
@@ -60,6 +69,10 @@ class GDELTAPI:
             List of article dicts in standard post format
         """
         if not self.enabled:
+            return []
+
+        if self._quota_exhausted:
+            logger.debug("GDELT circuit breaker active — skipping search")
             return []
 
         try:
@@ -109,9 +122,21 @@ class GDELTAPI:
                     "gdelt_tone": tone,
                 })
 
+            self._consecutive_429s = 0  # Reset on success
             logger.info(f"GDELT: found {len(results)} articles for '{query}'")
             return results
 
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                self._consecutive_429s += 1
+                if self._consecutive_429s >= 2:
+                    self._quota_exhausted = True
+                    logger.warning("GDELT rate limited — circuit breaker tripped for this cycle")
+                else:
+                    logger.warning("GDELT rate limit hit (429)")
+            else:
+                logger.error(f"GDELT HTTP error: {e}")
+            return []
         except Exception as e:
             logger.error(f"GDELT search error: {e}")
             return []

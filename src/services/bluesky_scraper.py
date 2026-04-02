@@ -38,8 +38,12 @@ class BlueskyScraper:
         else:
             logger.warning("Bluesky scraper disabled (no credentials configured)")
 
-    def _authenticate(self):
-        """Authenticate with Bluesky using handle + app password."""
+    def _authenticate(self) -> bool:
+        """Authenticate with Bluesky using handle + app password.
+
+        Returns:
+            True if authentication succeeded, False otherwise.
+        """
         try:
             resp = self.session.post(
                 f"{API_URL}/com.atproto.server.createSession",
@@ -53,10 +57,34 @@ class BlueskyScraper:
             data = resp.json()
             self.access_token = data["accessJwt"]
             self.session.headers["Authorization"] = f"Bearer {self.access_token}"
+            self._auth_time = time.monotonic()
             logger.info(f"Bluesky authenticated as {self.settings.bluesky_handle}")
+            return True
         except Exception as e:
             logger.error(f"Bluesky authentication failed: {e}")
             self.enabled = False
+            return False
+
+    def _ensure_authenticated(self) -> bool:
+        """Check if the current session is likely valid; re-authenticate if needed.
+
+        AT Protocol access tokens expire after ~2 hours. This proactively
+        refreshes when approaching expiry rather than waiting for a 401.
+
+        Returns:
+            True if authenticated and ready, False if auth failed.
+        """
+        if not self.access_token:
+            logger.warning("Bluesky: no access token, attempting authentication...")
+            return self._authenticate()
+
+        # Proactively re-auth if token is older than 90 minutes (tokens last ~2h)
+        elapsed = time.monotonic() - getattr(self, "_auth_time", 0)
+        if elapsed > 5400:  # 90 minutes
+            logger.info("Bluesky: token nearing expiry, refreshing session...")
+            return self._authenticate()
+
+        return True
 
     @sleep_and_retry
     @limits(calls=30, period=60)
@@ -77,9 +105,32 @@ class BlueskyScraper:
         Returns:
             List of post dictionaries in standardized format
         """
-        if not self.enabled or not self.access_token:
+        if not self.enabled:
             return []
 
+        if not self._ensure_authenticated():
+            return []
+
+        return self._do_search(query, max_results, hours_back, allow_retry=True)
+
+    def _do_search(
+        self,
+        query: str,
+        max_results: int,
+        hours_back: int,
+        allow_retry: bool = False,
+    ) -> List[Dict]:
+        """Execute the actual search request.
+
+        Args:
+            query: Search query string
+            max_results: Maximum posts to return
+            hours_back: How many hours back to search
+            allow_retry: If True, retry once after re-auth on 401
+
+        Returns:
+            List of post dictionaries in standardized format
+        """
         try:
             cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
 
@@ -118,8 +169,15 @@ class BlueskyScraper:
                 logger.warning("Bluesky rate limit hit, backing off...")
                 time.sleep(30)
             elif e.response is not None and e.response.status_code == 401:
-                logger.warning("Bluesky token expired, re-authenticating...")
-                self._authenticate()
+                if allow_retry:
+                    logger.warning("Bluesky token expired mid-search, re-authenticating and retrying...")
+                    if self._authenticate():
+                        return self._do_search(query, max_results, hours_back, allow_retry=False)
+                    else:
+                        logger.warning("Bluesky re-auth failed after 401; disabling scraper for this run")
+                else:
+                    logger.error("Bluesky 401 after re-auth retry; disabling scraper")
+                    self.enabled = False
             else:
                 logger.error(f"Bluesky API error: {e}")
             return []

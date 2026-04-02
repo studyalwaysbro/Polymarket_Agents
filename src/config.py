@@ -116,6 +116,10 @@ class Settings(BaseSettings):
         ge=60,
         description='Seconds between data collection cycles'
     )
+    cycle_timeout: int = Field(
+        default=480,
+        description='Maximum seconds for a single collection cycle before forced termination'
+    )
     max_contracts_per_cycle: int = Field(
         default=20,
         ge=1,

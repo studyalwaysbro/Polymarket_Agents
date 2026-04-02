@@ -1,7 +1,11 @@
 """Financial Modeling Prep API for stock/commodity price data."""
 
+import sys
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
+
+sys.path.insert(0, str(Path.home() / ".api-monitor"))
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -69,6 +73,11 @@ class FMPAPI:
                     params={"apikey": self.settings.fmp_api_key},
                     timeout=10
                 )
+                try:
+                    from api_logger import log_api_call
+                    log_api_call("fmp", f"/quote/{ticker}", project="polymarket-agents")
+                except Exception:
+                    pass
                 response.raise_for_status()
                 data = response.json()
 
@@ -115,6 +124,12 @@ class FMPAPI:
                 params={"apikey": self.settings.fmp_api_key},
                 timeout=10
             )
+            try:
+                from api_logger import log_api_call
+                log_api_call("fmp", "/stock_market/gainers", project="polymarket-agents")
+                log_api_call("fmp", "/stock_market/losers", project="polymarket-agents")
+            except Exception:
+                pass
 
             gainers = gainers_resp.json()[:5] if gainers_resp.status_code == 200 else []
             losers = losers_resp.json()[:5] if losers_resp.status_code == 200 else []

@@ -76,6 +76,13 @@ class PolymarketGapDetector:
             'errors': []
         }
 
+        timeout = self.settings.cycle_timeout
+        last_completed_phase = "none"
+
+        def _timed_out():
+            elapsed = time.time() - cycle_start
+            return elapsed > timeout
+
         try:
             # Step 1: Data Collection
             self.logger.info("\n[STEP 1/4] Data Collection")
@@ -87,6 +94,16 @@ class PolymarketGapDetector:
             }
             self.logger.info(f"✓ Collected {results['collection']['contracts_collected']} contracts, "
                            f"{results['collection']['social_posts']} social posts")
+            last_completed_phase = "data_collection"
+
+            if _timed_out():
+                self.logger.warning(
+                    f"Cycle timeout ({timeout}s) reached after data collection "
+                    f"({time.time() - cycle_start:.1f}s elapsed) — skipping remaining phases"
+                )
+                results['timed_out'] = True
+                results['last_completed_phase'] = last_completed_phase
+                raise TimeoutError("cycle_timeout")
 
             # Step 2: Sentiment Analysis
             self.logger.info("\n[STEP 2/4] Sentiment Analysis")
@@ -96,6 +113,16 @@ class PolymarketGapDetector:
                 'contracts_analyzed': len(sentiment_results)
             }
             self.logger.info(f"✓ Analyzed sentiment for {len(sentiment_results)} contracts")
+            last_completed_phase = "sentiment_analysis"
+
+            if _timed_out():
+                self.logger.warning(
+                    f"Cycle timeout ({timeout}s) reached after sentiment analysis "
+                    f"({time.time() - cycle_start:.1f}s elapsed) — skipping remaining phases"
+                )
+                results['timed_out'] = True
+                results['last_completed_phase'] = last_completed_phase
+                raise TimeoutError("cycle_timeout")
 
             # Step 3: Gap Detection
             self.logger.info("\n[STEP 3/4] Gap Detection")
@@ -112,6 +139,16 @@ class PolymarketGapDetector:
                 results['gaps']['by_type'][gap_type] = results['gaps']['by_type'].get(gap_type, 0) + 1
 
             self.logger.info(f"✓ Detected {len(gaps)} pricing gaps")
+            last_completed_phase = "gap_detection"
+
+            if _timed_out():
+                self.logger.warning(
+                    f"Cycle timeout ({timeout}s) reached after gap detection "
+                    f"({time.time() - cycle_start:.1f}s elapsed) — skipping remaining phases"
+                )
+                results['timed_out'] = True
+                results['last_completed_phase'] = last_completed_phase
+                raise TimeoutError("cycle_timeout")
 
             # Step 4.5: Backtesting (optional)
             if self.settings.enable_backtesting:
@@ -129,8 +166,18 @@ class PolymarketGapDetector:
                     }
                     self.logger.info(f"✓ Backtest: {backtest.get('total_predictions', 0)} predictions, "
                                      f"win rate {backtest.get('win_rate', 0):.1%}")
+                    last_completed_phase = "backtesting"
                 except Exception as e:
                     self.logger.warning(f"Backtest skipped: {e}")
+
+                if _timed_out():
+                    self.logger.warning(
+                        f"Cycle timeout ({timeout}s) reached after backtesting "
+                        f"({time.time() - cycle_start:.1f}s elapsed) — skipping reporting phase"
+                    )
+                    results['timed_out'] = True
+                    results['last_completed_phase'] = last_completed_phase
+                    raise TimeoutError("cycle_timeout")
 
             # Step 5: Reporting
             self.logger.info("\n[STEP 5/5] Generating Report")
@@ -139,6 +186,7 @@ class PolymarketGapDetector:
             results['report'] = {
                 'gaps_reported': len(ranked_gaps)
             }
+            last_completed_phase = "reporting"
 
             results['success'] = True
             cycle_duration = time.time() - cycle_start
@@ -148,6 +196,19 @@ class PolymarketGapDetector:
             self.logger.info(f"CYCLE COMPLETE - Duration: {cycle_duration:.2f}s")
             self.logger.info("=" * 80)
 
+        except TimeoutError:
+            # Cycle timeout — partial results already populated above
+            cycle_duration = time.time() - cycle_start
+            results['duration_seconds'] = round(cycle_duration, 2)
+            results['success'] = False
+            results['errors'].append(
+                f"Cycle timed out after {cycle_duration:.0f}s (limit: {timeout}s). "
+                f"Last completed phase: {last_completed_phase}"
+            )
+            self.logger.warning(
+                f"Cycle #{self.cycle_count} timed out after {cycle_duration:.1f}s — "
+                f"last completed phase: {last_completed_phase}"
+            )
         except Exception as e:
             self.logger.error(f"Error during analysis cycle: {e}", exc_info=True)
             results['errors'].append(str(e))
