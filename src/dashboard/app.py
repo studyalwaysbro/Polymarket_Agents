@@ -176,26 +176,45 @@ def get_progress():
     """Pipeline progress: collection, sentiment, gap detection stages."""
     db = get_db_manager()
     with db.get_session() as session:
-        total_posts = session.query(func.count(SocialPost.id)).scalar() or 0
-        total_sentiments = session.query(func.count(SentimentAnalysis.id)).scalar() or 0
         total_contracts = session.query(func.count(Contract.id)).scalar() or 0
         active_contracts = session.query(func.count(Contract.id)).filter(Contract.active == True).scalar() or 0
         total_gaps = session.query(func.count(DetectedGap.id)).scalar() or 0
         unresolved_gaps = session.query(func.count(DetectedGap.id)).filter(DetectedGap.resolved == False).scalar() or 0
 
-        # Sentiment progress
-        sentiment_pct = round((total_sentiments / total_posts * 100), 1) if total_posts > 0 else 0
-        remaining = max(0, total_posts - total_sentiments)
+        # Scope sentiment progress to the current cycle only.
+        # Use the most recent CycleRun.started_at as the window start; fall back
+        # to polling_interval seconds ago if no cycle has been recorded yet.
+        latest_cycle = session.query(CycleRun).order_by(CycleRun.started_at.desc()).first()
+        if latest_cycle:
+            cycle_start = latest_cycle.started_at
+            # Ensure timezone-aware for comparisons
+            if cycle_start.tzinfo is None:
+                cycle_start = cycle_start.replace(tzinfo=timezone.utc)
+        else:
+            settings = get_settings()
+            cycle_start = datetime.now(timezone.utc) - timedelta(seconds=settings.polling_interval)
 
-        # Posts by platform breakdown
+        cycle_posts = session.query(func.count(SocialPost.id)).filter(
+            SocialPost.fetched_at >= cycle_start
+        ).scalar() or 0
+        cycle_sentiments = session.query(func.count(SentimentAnalysis.id)).filter(
+            SentimentAnalysis.analyzed_at >= cycle_start
+        ).scalar() or 0
+
+        sentiment_pct = round((cycle_sentiments / cycle_posts * 100), 1) if cycle_posts > 0 else 0
+        remaining = max(0, cycle_posts - cycle_sentiments)
+
+        # Posts by platform breakdown (current cycle)
         platform_counts = session.query(
             SocialPost.platform, func.count(SocialPost.id)
-        ).group_by(SocialPost.platform).all()
+        ).filter(SocialPost.fetched_at >= cycle_start).group_by(SocialPost.platform).all()
         platforms = {p: c for p, c in platform_counts}
 
-        # Sentiment label breakdown
+        # Sentiment label breakdown (current cycle)
         label_counts = session.query(
             SentimentAnalysis.sentiment_label, func.count(SentimentAnalysis.id)
+        ).filter(
+            SentimentAnalysis.analyzed_at >= cycle_start
         ).group_by(SentimentAnalysis.sentiment_label).all()
         labels = {l: c for l, c in label_counts if l}
 
@@ -209,7 +228,7 @@ def get_progress():
         ).scalar() or 0
 
         # Pipeline stage
-        if total_posts == 0:
+        if cycle_posts == 0:
             stage = "idle"
             stage_label = "Idle - No data collected yet"
         elif sentiment_pct < 95:
@@ -226,16 +245,17 @@ def get_progress():
             "pipeline": {
                 "stage": stage,
                 "stage_label": stage_label,
+                "cycle_start": cycle_start.isoformat(),
             },
             "collection": {
                 "contracts": total_contracts,
                 "active_contracts": active_contracts,
-                "total_posts": total_posts,
+                "total_posts": cycle_posts,
                 "platforms": platforms,
                 "recent_posts_5m": recent_posts,
             },
             "sentiment": {
-                "analyzed": total_sentiments,
+                "analyzed": cycle_sentiments,
                 "remaining": remaining,
                 "percent": sentiment_pct,
                 "labels": labels,

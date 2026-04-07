@@ -667,10 +667,14 @@ Candidate markets from other platforms:
 
 For each candidate, respond with ONLY a valid JSON array. Each element should have:
 - "index": the candidate number (1-based)
-- "match": true or false
+- "match": true or false — true only if they resolve on the same real-world event
 - "confidence": 0.0 to 1.0 (how confident this is the same event)
+- "inverted": true if the questions are semantically OPPOSITE (e.g. "Will X resign?" vs "Will X remain in office?"), false otherwise
 
-Only mark as match=true if the markets are about essentially the same question/outcome.
+Key rule: markets can cover the same event but be framed in opposite directions.
+For example, "Will Trump resign by 2026?" and "Will Trump be president at end of 2026?" resolve
+on the same underlying fact but YES on one corresponds to NO on the other — mark inverted=true.
+Only mark match=true if the markets genuinely resolve on the same underlying event.
 Respond with ONLY the JSON array, no extra text.
 """
 
@@ -690,6 +694,7 @@ Respond with ONLY the JSON array, no extra text.
                         if 0 <= idx < len(candidates):
                             candidate = candidates[idx].copy()
                             candidate["match_confidence"] = float(item["confidence"])
+                            candidate["inverted"] = bool(item.get("inverted", False))
                             matches.append(candidate)
                 except (KeyError, ValueError, TypeError):
                     continue
@@ -756,7 +761,12 @@ Respond with ONLY the JSON array, no extra text.
                 # Check for arbitrage on each confirmed match
                 gaps = []
                 for match in confirmed_matches:
-                    competitor_prob = match["probability"]
+                    raw_prob = match["probability"]
+                    # If the questions are semantically inverted (e.g. "Will X resign?" vs
+                    # "Will X remain in office?"), the YES probabilities are complements.
+                    # Flip so we're comparing apples to apples before computing the edge.
+                    inverted = match.get("inverted", False)
+                    competitor_prob = (1.0 - raw_prob) if inverted else raw_prob
                     edge = abs(polymarket_prob - competitor_prob)
 
                     if edge < self.settings.arbitrage_min_edge:
@@ -803,9 +813,11 @@ Respond with ONLY the JSON array, no extra text.
                             "competitor_platform": match["platform"],
                             "competitor_market_id": match["market_id"],
                             "competitor_question": match["question"],
-                            "competitor_probability": round(competitor_prob, 4),
+                            "competitor_probability_raw": round(raw_prob, 4),
+                            "competitor_probability_adjusted": round(competitor_prob, 4),
                             "competitor_url": match.get("url", ""),
                             "match_confidence": match.get("match_confidence", 0),
+                            "inverted": inverted,
                             "direction": direction,
                             "polymarket_probability": round(polymarket_prob, 4),
                         }
