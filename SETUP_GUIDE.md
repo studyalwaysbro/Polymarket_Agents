@@ -1,348 +1,214 @@
-# Polymarket Gap Detector - Setup Guide
+# Setup Guide
 
-Complete step-by-step guide to get the system running.
+Step-by-step instructions to get everything running.
 
-## Prerequisites
+## System Requirements
 
-### 1. System Requirements
-- Python 3.9 or higher
-- PostgreSQL 12 or higher
-- 8GB RAM minimum (16GB recommended)
-- Stable internet connection
+- Python 3.9+
+- PostgreSQL 12+
+- 8GB RAM minimum (16GB better)
+- Internet connection
 
-### 2. API Keys / Accounts
+## API Keys and Accounts
 
-#### LLM Provider (choose one)
+### LLM Provider (pick one)
 
-**Option A: Ollama (FREE - Recommended)**
+**Ollama (free, recommended for getting started):**
 1. Install Ollama (see [OLLAMA_SETUP.md](OLLAMA_SETUP.md))
 2. Pull a model: `ollama pull llama3.1:8b`
 3. No API key needed
 
-**Option B: OpenAI (PAID)**
-1. Go to [OpenAI Platform](https://platform.openai.com/)
-2. Sign up or log in
-3. Navigate to API Keys section
-4. Create a new API key (starts with `sk-`)
+**DeepSeek (recommended for quality):**
+1. Sign up at platform.deepseek.com
+2. Get an API key
 
-#### Bluesky Account (Optional, Free)
-1. Create a free account at [bsky.app](https://bsky.app)
+**OpenAI (paid):**
+1. Sign up at platform.openai.com
+2. Create an API key
+
+### Bluesky (optional, free)
+1. Make an account at bsky.app
 2. Go to Settings > App Passwords
 3. Generate an app password
-4. Note down your handle (e.g., `yourname.bsky.social`) and app password
+4. Save your handle and app password
 
-#### Cross-Market APIs (No Setup Needed)
-Kalshi and Manifold Markets APIs are free and require no authentication. They are enabled by default.
+### Cross-Market APIs (no setup needed)
+Kalshi and Manifold APIs are free and don't need auth. Enabled by default.
 
-#### Twitter API (Optional, Paid)
-1. Apply for Twitter Developer Account: [Twitter Developer Portal](https://developer.twitter.com/)
-2. Create a new App
-3. Generate a Bearer Token
+### Twitter (optional, paid)
+1. Apply at developer.twitter.com
+2. Create an app
+3. Get a Bearer Token
 
-#### Reddit API (Optional)
-1. Go to [Reddit Apps](https://www.reddit.com/prefs/apps)
-2. Click "Create App" or "Create Another App"
-3. Select "script"
-4. Note down Client ID and Client Secret
+### Reddit (optional)
+1. Go to reddit.com/prefs/apps
+2. Create a "script" app
+3. Save the Client ID and Secret
 
-## Installation Steps
+## Installation
 
-### Step 1: Clone Repository
+### Step 1: Get the Code
 ```bash
-cd c:\Users\Matt\Documents\GitHub\Polymarket_Agents
+git clone https://github.com/studyalwaysbro/Polymarket_Agents.git
+cd Polymarket_Agents
 ```
 
-### Step 2: Create Virtual Environment
+### Step 2: Virtual Environment
 ```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
-
-# Linux/Mac
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate    # Linux/Mac
+# or: venv\Scripts\activate  # Windows
 ```
 
-### Step 3: Install Dependencies
+### Step 3: Dependencies
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If you encounter issues, try installing in groups:
+If that gives trouble, install in groups:
 ```bash
-# Core dependencies
 pip install crewai langchain-openai openai
-
-# Database
 pip install psycopg2-binary sqlalchemy
-
-# Social media
 pip install praw tweepy
-
-# Utilities
 pip install python-dotenv pydantic pydantic-settings rich loguru
 ```
 
-### Step 4: Setup PostgreSQL Database
+### Step 4: PostgreSQL
 
-#### Install PostgreSQL
-- **Windows**: Download from [PostgreSQL Downloads](https://www.postgresql.org/download/windows/)
-- **Mac**: `brew install postgresql@14`
-- **Linux**: `sudo apt-get install postgresql postgresql-contrib`
+Install it if you haven't:
+- **Linux:** `sudo apt-get install postgresql postgresql-contrib`
+- **Mac:** `brew install postgresql@14`
+- **Windows:** download from postgresql.org
 
-#### Create Database
+Create the database:
 ```bash
-# Start PostgreSQL service
-# Windows: Services → PostgreSQL → Start
-# Mac: brew services start postgresql
-# Linux: sudo systemctl start postgresql
-
-# Create database
 createdb polymarket_gaps
 
-# Or using psql:
+# Or through psql:
 psql -U postgres
 CREATE DATABASE polymarket_gaps;
 \q
 ```
 
-#### Run Migrations
+Run migrations:
 ```bash
 psql -U postgres -d polymarket_gaps -f migrations/init_db.sql
+psql -U postgres -d polymarket_gaps -f migrations/002_upgrade_schema.sql
+psql -U postgres -d polymarket_gaps -f migrations/003_cycle_runs.sql
 ```
 
-Expected output:
-```
-CREATE EXTENSION
-CREATE TABLE
-CREATE TABLE
-...
-NOTICE:  Database schema created successfully!
-```
+### Step 5: Configure
 
-### Step 5: Configure Environment Variables
-
-1. Copy the example environment file:
 ```bash
 cp config/.env.example .env
 ```
 
-2. Edit `.env` file with your credentials:
+Edit `.env`:
 ```env
-# Database (update with your PostgreSQL credentials)
 DATABASE_URL=postgresql://postgres:your_password@localhost:5432/polymarket_gaps
 
-# LLM Provider: "ollama" (free) or "openai" (paid)
+# Pick your LLM
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=llama3.1:8b
-# OPENAI_API_KEY=sk-your-key  # Only needed if LLM_PROVIDER=openai
 
-# Bluesky (Optional, free - create account at bsky.app)
+# Or for DeepSeek:
+# LLM_PROVIDER=deepseek
+# DEEPSEEK_API_KEY=your_key
+
+# Bluesky (optional)
 # BLUESKY_HANDLE=yourname.bsky.social
 # BLUESKY_APP_PASSWORD=your-app-password
 
-# Twitter (Optional, paid API)
-# TWITTER_BEARER_TOKEN=your-twitter-bearer-token-here
-
-# Reddit (Optional)
-# REDDIT_CLIENT_ID=your-reddit-client-id
-# REDDIT_CLIENT_SECRET=your-reddit-client-secret
-
-# Cross-Market Arbitrage (enabled by default, no API keys needed)
+# Cross-market (enabled by default, free)
 ENABLE_KALSHI=true
 ENABLE_MANIFOLD=true
 ARBITRAGE_MIN_EDGE=0.10
 
-# System Settings (defaults are fine)
+# System
 POLLING_INTERVAL=300
 MAX_CONTRACTS_PER_CYCLE=20
 MIN_CONFIDENCE_SCORE=60
 ```
 
-### Step 6: Test Database Connection
+### Step 6: Test
 
 ```bash
-python -c "from src.database import init_database; db = init_database(); print('✓ Database connected!' if db.test_connection() else '✗ Connection failed')"
+python -c "from src.database import init_database; db = init_database(); print('DB connected' if db.test_connection() else 'Connection failed')"
 ```
-
-Expected output:
-```
-✓ Database connected!
-```
-
-### Step 7: Verify Configuration
 
 ```bash
-python -c "from src.config import get_settings; s = get_settings(); s.validate_required_services(); print('✓ Configuration valid!')"
+python -c "from src.config import get_settings; s = get_settings(); s.validate_required_services(); print('Config valid')"
 ```
 
-## Running the System
+## Running
 
-### Demo Mode (Single Cycle)
-Run one complete analysis cycle to test everything:
 ```bash
-python -m src.main demo
+python run.py demo          # one cycle, verbose
+python run.py once          # one cycle, exit
+python run.py               # interactive (default)
+python run.py continuous    # nonstop
 ```
-
-Expected output:
-```
-[STEP 1/4] Data Collection
-✓ Collected X contracts, Y social posts
-
-[STEP 2/4] Sentiment Analysis
-✓ Analyzed sentiment for X contracts
-
-[STEP 3/4] Gap Detection
-✓ Detected X pricing gaps
-
-[STEP 4/4] Generating Report
-[Formatted report displays]
-
-✓ Demo completed successfully!
-```
-
-### Single Cycle
-Run once and exit:
-```bash
-python -m src.main once
-```
-
-### Continuous Monitoring (Production)
-Run continuously with automatic polling:
-```bash
-python -m src.main continuous
-```
-
-Or simply:
-```bash
-python -m src.main
-```
-
-Press `Ctrl+C` to stop gracefully.
 
 ## Troubleshooting
 
-### Issue: "ModuleNotFoundError: No module named 'crewai'"
-**Solution**: Make sure virtual environment is activated and dependencies installed
+**"ModuleNotFoundError"**: activate your venv and reinstall requirements.
+
+**"Could not connect to database"**: check PostgreSQL is running (`pg_isready`), check your `DATABASE_URL` in `.env`.
+
+**"OpenAI API key is required"**: set `LLM_PROVIDER=ollama` if you want free, or add your key.
+
+**No gaps detected**: probably not enough social data yet. Configure Bluesky for more data, or lower `MIN_CONFIDENCE_SCORE` temporarily.
+
+**Rate limiting errors**: increase `POLLING_INTERVAL` or decrease `MAX_CONTRACTS_PER_CYCLE`.
+
+## Logs
+
+Logs go to `logs/`:
+- `logs/app.log` for everything INFO and up
+- `logs/errors.log` for errors only
+
+Watch them live:
 ```bash
-venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-```
-
-### Issue: "Could not connect to database"
-**Solution**: Check PostgreSQL is running and credentials are correct
-```bash
-# Test PostgreSQL
-psql -U postgres -d polymarket_gaps
-
-# If connection refused, start PostgreSQL service
-```
-
-### Issue: "OpenAI API key is required"
-**Solution**: Either set `LLM_PROVIDER=ollama` for free local LLM, or set `OPENAI_API_KEY` in `.env`
-
-### Issue: "No pricing gaps detected"
-**Possible causes**:
-1. Not enough social media data yet (RSS feeds work out of the box, but Bluesky/Twitter/Reddit are optional)
-2. MIN_CONFIDENCE_SCORE set too high
-3. Not enough historical data yet
-
-**Solutions**:
-- Configure Bluesky credentials for more social data (free)
-- Lower MIN_CONFIDENCE_SCORE in `.env` temporarily
-- Run multiple cycles to build historical data
-
-### Issue: Rate Limiting Errors
-**Solution**: Increase POLLING_INTERVAL or reduce MAX_CONTRACTS_PER_CYCLE in `.env`
-```env
-POLLING_INTERVAL=600  # 10 minutes instead of 5
-MAX_CONTRACTS_PER_CYCLE=10  # Fewer contracts per cycle
-```
-
-## Monitoring and Logs
-
-Logs are stored in the `logs/` directory:
-- `logs/app.log` - All INFO and above
-- `logs/errors.log` - Only errors and critical issues
-
-View logs in real-time:
-```bash
-# Windows
-Get-Content logs/app.log -Wait -Tail 50
-
-# Linux/Mac
 tail -f logs/app.log
 ```
 
 ## Database Maintenance
 
-### View Statistics
 ```bash
-python -c "from src.database import get_db_manager; db = get_db_manager(); print(db.get_stats())"
+# Stats
+python -c "from src.database import get_db_manager; print(get_db_manager().get_stats())"
+
+# Refresh views
+python -c "from src.database import get_db_manager; get_db_manager().refresh_materialized_view()"
+
+# Clean old data
+python -c "from src.database import get_db_manager; get_db_manager().cleanup_old_data()"
 ```
 
-### Refresh Materialized Views
-```bash
-python -c "from src.database import get_db_manager; db = get_db_manager(); db.refresh_materialized_view()"
-```
+## Performance Tuning
 
-### Archive Old Data
-```bash
-python -c "from src.database import get_db_manager; db = get_db_manager(); db.cleanup_old_data()"
-```
-
-## Performance Optimization
-
-### For Limited Social Media Access
-If you don't have Twitter/Reddit APIs:
+Less social media data:
 ```env
 ENABLE_TWITTER=false
 ENABLE_REDDIT=false
 ```
-System will still work but with lower confidence scores.
 
-### For Faster Cycles
+Faster cycles:
 ```env
-MAX_CONTRACTS_PER_CYCLE=5  # Analyze fewer contracts
-SENTIMENT_BATCH_SIZE=25     # Smaller batches
+MAX_CONTRACTS_PER_CYCLE=5
+SENTIMENT_BATCH_SIZE=25
 ```
 
-### For Zero LLM Costs
+Zero LLM cost:
 ```env
-LLM_PROVIDER=ollama          # Use free local model
-OLLAMA_MODEL=llama3.1:8b     # Or qwen2.5:7b, mistral, phi3
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3.1:8b
 ```
 
-## Next Steps
+## Security
 
-1. **Run Demo Mode** to verify everything works
-2. **Let it run for a few cycles** to build historical data
-3. **Monitor the output** and adjust confidence thresholds
-4. **Review the logs** for any warnings or errors
-5. **Plan dashboard integration** using the database as backend
-
-## Getting Help
-
-- Check logs in `logs/` directory
-- Review database data: `psql -U postgres -d polymarket_gaps`
-- Verify configuration: `python -c "from src.config import get_settings; print(get_settings())"`
-
-## Security Best Practices
-
-1. **Never commit `.env` file** - it contains secrets
-2. **Use strong PostgreSQL password**
-3. **Restrict database access** to localhost only
-4. **Rotate API keys regularly**
-5. **Monitor API usage** to avoid unexpected costs
-
-## Success Criteria
-
-You'll know it's working when:
-- ✓ Demo mode completes without errors
-- ✓ Console displays formatted pricing gaps
-- ✓ Database contains contracts and social posts
-- ✓ Logs show successful completion
-- ✓ Confidence scores are reasonable (50-90 range)
-
-Congratulations! Your Polymarket Gap Detector is now operational. 🎉
+- Don't commit `.env` (it's in `.gitignore`)
+- Use a strong PostgreSQL password
+- Keep DB access to localhost
+- Rotate API keys occasionally

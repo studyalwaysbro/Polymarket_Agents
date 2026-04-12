@@ -1,185 +1,149 @@
 # Changelog
 
-## [v2.0] – 2026-03-11
+## [v2.1] Upstream sync, 2026-04-12
 
-### Major: Multi-Source Data Pipeline & Dashboard
+Pulled Matt White's latest changes (Apr 2 to Apr 7). See TRUTH.md for full provenance.
 
-This release transforms the system from a basic 2-source pipeline (Bluesky + RSS) into a comprehensive 8-source data collection and analysis platform with a live dashboard, ensemble sentiment analysis, smart contract selection, and backtesting.
+### New: Volume Spike Gap Detection
 
-### New Data Sources (5 added)
+New gap type in `gap_detector.py`. Flags contracts with unusual volume patterns that might indicate incoming price movement. This is a big addition, roughly 390 new lines.
 
-- **Tavily Web Search** — Real-time web search API for news, blogs, forums. Requires `TAVILY_API_KEY`. Falls back gracefully if missing.
-- **GDELT News API** — Free global news monitoring (65+ languages, thousands of articles/hour). No API key required. Provides pre-computed tone/sentiment scores.
-- **Grok/xAI Sentiment** — X/Twitter sentiment via xAI API (OpenAI-compatible). Requires `GROK_API_KEY`. Disabled if missing.
-- **X Mirror Scraper** — Free Nitter/XCancel scraper as fallback when Grok is unavailable. Scrapes public tweets via BeautifulSoup. Respects rate limits and robots.txt.
-- **FMP Financial Data** — Financial Modeling Prep API for market data on financially-relevant contracts. Requires `FMP_API_KEY`.
-- **Polymarket Comments** — Scrapes comments/activity from Polymarket's own Gamma API. Always available, no key needed.
+### New: Semantic Inversion Detection
 
-### Dual Search Strategy (keyword + title)
+When checking for cross-market arbitrage, the system now detects cases where two markets look related but have opposite semantics. Example: "Will X pass?" on Polymarket vs "Will X fail?" on Kalshi. Before this fix, those would flag as arbitrage opportunities when they're actually consistent.
 
-All social sources (Bluesky, X Mirror, Tavily, Grok) now perform **two searches** per contract:
-1. **Keyword search** — extracted topic keywords for broad sentiment (e.g., "Trump immigration")
-2. **Contract title search** — the actual Polymarket question to find people discussing the specific bet
+### Fixes
 
-GDELT and RSS use keyword-only (news articles cover topics, not bet titles). Results are deduplicated by `post_id` within each source before storage.
+- Dashboard pipeline progress was accumulating across all cycles instead of resetting per cycle. Fixed.
+- Sentiment tracking on the dashboard had an overflow bug. Fixed.
+- `.env` files with inline comments (like `KEY=value # comment`) were breaking config parsing. The comment text was getting included in the value. Fixed in `config.py`.
+
+### Other
+
+- Updated `requirements.txt` with dependency changes
+- New `report/polymarket_report.pdf` added
+- Minor updates to GDELT, Polymarket API, and X mirror scraper services
+
+---
+
+## [v2.0] 2026-03-11
+
+### The big one: multi-source pipeline + dashboard
+
+Took the system from a basic 2-source pipeline (Bluesky + RSS) to 8 data sources with a live web dashboard, ensemble sentiment, smart contract selection, and backtesting.
+
+### 5 New Data Sources
+
+- **Tavily Web Search**: real-time web search API. Needs `TAVILY_API_KEY`. Falls back if missing.
+- **GDELT News API**: free global news monitoring, 65+ languages. No key needed.
+- **Grok/xAI Sentiment**: X/Twitter sentiment through xAI's API. Needs `GROK_API_KEY`.
+- **X Mirror Scraper**: free Nitter/XCancel scraper as a fallback when Grok isn't set up. Uses BeautifulSoup, respects rate limits.
+- **FMP Financial Data**: Financial Modeling Prep for market data on finance-related contracts. Needs `FMP_API_KEY`.
+- **Polymarket Comments**: scrapes comments from Polymarket's Gamma API. Always available.
+
+### Dual Search
+
+All social sources now do two searches per contract:
+1. Keyword search for broad sentiment (like "Trump immigration")
+2. Contract title search for people discussing the actual bet
+
+GDELT and RSS stick to keyword-only since news covers topics, not bet titles. Results get deduplicated by `post_id` within each source.
 
 ### Smart Contract Selection
 
-Replaced the old "grab first N contracts" approach with a filter-and-rank system:
-- **Fetches full universe** (500+ contracts) and stores ALL in database for historical tracking
-- **Filters out garbage**: dead markets (no volume + no liquidity), no-odds contracts, basically-resolved (97%+ or 3%- odds)
-- **Ranks remaining contracts** by composite score: volume (30%), volatility (25%), uncertainty/mid-odds (20%), near-expiry (10%), liquidity (10%), spread (5%)
-- Best contracts processed first for social media analysis — volatile/breaking-news contracts prioritized
+Got rid of the old "grab first N contracts" approach. Now it:
+- Fetches the full universe (500+ contracts) and stores everything for historical tracking
+- Filters out dead markets, no-odds contracts, and basically-resolved ones (97%+ or 3%-)
+- Ranks what's left by: volume (30%), volatility (25%), uncertainty (20%), near-expiry (10%), liquidity (10%), spread (5%)
+- Processes best contracts first so volatile/breaking stuff gets priority
 
 ### Fixed: Polymarket API Parser
 
-- **Odds were always 0** — Parser looked for `outcomes[0].price` (dict format) but API returns `outcomePrices` as a separate array. Now reads `outcomePrices` first, falls back to dict format.
-- **Categories were always "Unknown"** — API nests category inside `events` array, not top-level. Now extracts from `events[0].category` or `events[0].slug`.
+Two bugs that were there from the start:
+- Odds were always 0. Parser expected `outcomes[0].price` but the API sends `outcomePrices` as a separate array. Fixed.
+- Categories were always "Unknown". API nests category inside `events` array, not top-level. Now reads `events[0].category`.
 
-### DeepSeek LLM Support
+### DeepSeek LLM
 
-- Added `deepseek` as LLM provider option via `LLM_PROVIDER=deepseek`
-- Uses OpenAI-compatible API at `https://api.deepseek.com/v1`
-- Configurable model via `DEEPSEEK_MODEL` (default: `deepseek-chat`)
-- `get_fast_llm()` always uses Ollama for cheap tasks regardless of primary provider
-- Graceful fallback: missing DeepSeek key auto-falls back to Ollama
+Added `deepseek` as an LLM provider option. OpenAI-compatible API, configurable model via `DEEPSEEK_MODEL`. The `get_fast_llm()` function always uses Ollama for cheap tasks no matter what the primary provider is. Missing DeepSeek key auto-falls back to Ollama.
 
-### Ensemble Sentiment Analysis
+### Ensemble Sentiment
 
-- New `EnsembleSentiment` class combining VADER + TextBlob + LLM scores
-- Weighted ensemble: `llm_weight * llm_score + (1-llm_weight) * avg(vader, textblob)`
-- Rolling sentiment windows (6h, 12h, 24h) per contract
-- New DB columns: `vader_score`, `textblob_score`, `ensemble_score` on `SentimentAnalysis`
+New `EnsembleSentiment` class combining VADER + TextBlob + LLM scores. Weighted formula: `llm_weight * llm_score + (1-llm_weight) * avg(vader, textblob)`. Rolling sentiment windows at 6h, 12h, 24h per contract.
 
 ### Dynamic Confidence Scoring
 
-- New `ConfidenceScorer` class replaces inline confidence calculation
-- Factors: gap size, data volume, cross-source consistency, social source count, contract features
-- Social data weighting: confidence down-weighted when `social_sources_count == 0`
-- Gap type adjustments: arbitrage = price-only, pattern = partial social dependency
+New `ConfidenceScorer` class. Factors in gap size, data volume, cross-source consistency, social source count, and contract features. Confidence gets down-weighted when social data is thin.
 
-### Contract Feature Engineering
+### Contract Features
 
-- New `ContractFeatureEngine` class computing per-contract features
-- Features: `time_to_expiry_hours`, `volatility_24h`, `momentum`, `volume_momentum`, `spread`, `is_near_resolution`, `implied_volatility_proxy`
-- Stored as JSONB in `contract_features` column on `DetectedGap`
+New `ContractFeatureEngine` computing per-contract: `time_to_expiry_hours`, `volatility_24h`, `momentum`, `volume_momentum`, `spread`, `is_near_resolution`, `implied_volatility_proxy`. Stored as JSONB on `DetectedGap`.
 
-### Backtesting Framework
+### Backtesting
 
-- New `Backtester` class querying resolved gaps to compute win rate and average edge
-- Configurable confidence threshold and gap type filters
-- Threshold tuning: finds optimal cutoffs per gap type
-- Results stored in `backtest_results` table
-- Accessible via dashboard API at `/api/backtest`
+New `Backtester` class. Queries resolved gaps, computes win rate and average edge. Configurable confidence threshold and gap type filters. Results stored in `backtest_results` table, accessible at `/api/backtest`.
 
 ### FastAPI Dashboard
 
-- Full web dashboard at `http://localhost:8000` (start with `python run.py dashboard`)
-- **Gap Explorer** — sortable/filterable gap list with confidence badges, gap type filters, market search
-- **Top Contracts** — contracts ranked by social buzz + gap activity
-- **Sentiment vs Price Chart** — per-contract sentiment overlay on price history (Recharts)
-- **Cycle History** — log of every pipeline run with duration, counts, success/failure, estimated cost
-- **Data Sources Panel** — live status of all 8 data sources with total posts, +N/hr activity, active/configured/disabled indicators, LLM provider badge
-- **New Gaps Alert Banner** — polls for recently detected gaps and shows notification count
-- **CSV Export** — download filtered gaps as CSV at `/api/gaps/export`
-- Dark theme, responsive layout, auto-refreshing (30s sources, 60s alerts)
+Full web dashboard at `http://localhost:8000`:
+- Gap explorer with sorting, filtering, confidence badges
+- Top contracts ranked by social buzz + gap activity
+- Sentiment vs price chart per contract (Recharts)
+- Cycle history log with duration, counts, cost estimates
+- Data sources panel showing live status of all 8 sources
+- New gaps alert banner
+- CSV export at `/api/gaps/export`
+- Dark theme, auto-refresh (30s sources, 60s alerts)
 
-### Cycle History Tracking
+### Cycle Tracking
 
-- New `CycleRun` database model tracking every pipeline execution
-- Records: cycle number, start/end time, duration, success, contracts/posts/sentiments/gaps counts, LLM provider, errors, metadata
-- Migration: `migrations/003_cycle_runs.sql`
-- API endpoint: `/api/cycles`
+New `CycleRun` model tracking every pipeline execution. Records cycle number, timing, success/failure, counts, LLM provider, errors. Migration: `003_cycle_runs.sql`. API: `/api/cycles`.
 
-### Interactive Run Mode
+### Interactive Mode
 
-- `python run.py` now defaults to interactive mode — runs one cycle, prompts before next
-- Dashboard stays alive between cycles
-- Modes: `interactive` (default), `continuous`, `once`, `demo`, `dashboard`, `monitor`, `test`
+`python run.py` now defaults to interactive. Runs one cycle, asks before the next. Dashboard stays alive between cycles. Modes: `interactive`, `continuous`, `once`, `demo`, `dashboard`, `monitor`, `test`.
 
-### Configuration Additions
+### New Config
 
-New `.env` variables (all optional, system degrades gracefully):
-- `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` — DeepSeek LLM
-- `TAVILY_API_KEY`, `ENABLE_TAVILY` — Tavily web search
-- `GROK_API_KEY`, `ENABLE_GROK` — Grok/xAI
-- `FMP_API_KEY`, `ENABLE_FMP` — Financial Modeling Prep
-- `ENABLE_X_MIRROR`, `ENABLE_GDELT` — Free scrapers
-- `ENABLE_ENSEMBLE_SENTIMENT` — VADER+TextBlob ensemble
-- `ENABLE_BACKTESTING` — Run backtest after each cycle
-- `SCRAPER_REQUEST_DELAY`, `SCRAPER_USER_AGENT`, `SCRAPER_RESPECT_ROBOTS` — Scraper behavior
+All optional, system degrades gracefully if missing:
+- `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`
+- `TAVILY_API_KEY`, `ENABLE_TAVILY`
+- `GROK_API_KEY`, `ENABLE_GROK`
+- `FMP_API_KEY`, `ENABLE_FMP`
+- `ENABLE_X_MIRROR`, `ENABLE_GDELT`
+- `ENABLE_ENSEMBLE_SENTIMENT`
+- `ENABLE_BACKTESTING`
+- `SCRAPER_REQUEST_DELAY`, `SCRAPER_USER_AGENT`, `SCRAPER_RESPECT_ROBOTS`
 
-### Database Schema Changes
+### DB Schema Changes
 
-- `migrations/002_upgrade_schema.sql` — New columns + tables
-- `migrations/003_cycle_runs.sql` — Cycle history table
+- `migrations/002_upgrade_schema.sql` + `003_cycle_runs.sql`
 - New tables: `sentiment_snapshots`, `backtest_results`, `cycle_runs`
 - New columns on `SentimentAnalysis`: `vader_score`, `textblob_score`, `ensemble_score`
 - New columns on `DetectedGap`: `social_sources_count`, `contract_features`
 
-### New Files (19 created)
+### 19 New Files, 12 Modified
 
-| File | Purpose |
-|------|---------|
-| `src/services/tavily_search.py` | Tavily web search client |
-| `src/services/gdelt_api.py` | GDELT global news API |
-| `src/services/grok_sentiment.py` | Grok/xAI X sentiment |
-| `src/services/x_mirror_scraper.py` | Nitter/XCancel tweet scraper |
-| `src/services/fmp_api.py` | Financial Modeling Prep API |
-| `src/sentiment/ensemble_sentiment.py` | VADER + TextBlob + LLM ensemble |
-| `src/features/contract_features.py` | Contract feature engineering |
-| `src/scoring/confidence_scorer.py` | Dynamic confidence scoring |
-| `src/analysis/backtester.py` | Backtesting framework |
-| `src/dashboard/app.py` | FastAPI dashboard backend |
-| `src/dashboard/static/index.html` | Dashboard frontend (vanilla JS + Chart.js) |
-| `migrations/002_upgrade_schema.sql` | Schema upgrade migration |
-| `migrations/003_cycle_runs.sql` | Cycle runs table migration |
-| `src/analysis/__init__.py` | Package init |
-| `src/dashboard/__init__.py` | Package init |
-| `src/features/__init__.py` | Package init |
-| `src/scoring/__init__.py` | Package init |
-| `src/sentiment/__init__.py` | Package init |
-
-### Modified Files (12 updated)
-
-| File | Changes |
-|------|---------|
-| `src/config.py` | DeepSeek support, 15+ new config fields, credential properties, `get_fast_llm()` |
-| `src/database/models.py` | `CycleRun` model, `SentimentSnapshot`, `BacktestResult`, new columns |
-| `src/database/__init__.py` | New model exports |
-| `src/services/__init__.py` | 5 new service exports |
-| `src/services/polymarket_api.py` | Fixed odds parser (`outcomePrices`), fixed category extraction, added Polymarket comments |
-| `src/services/manifold_api.py` | Comment collection for cross-reference |
-| `src/agents/data_collector.py` | 5 new source integrations, dual search (keyword+title), smart contract filter+rank |
-| `src/agents/sentiment_analyzer.py` | Ensemble sentiment integration |
-| `src/agents/gap_detector.py` | Dynamic confidence scorer, ensemble score usage |
-| `src/main.py` | Cycle history tracking, backtesting step |
-| `src/dashboard/app.py` | 8 API endpoints |
-| `run.py` | Interactive mode, dashboard mode |
-| `requirements.txt` | New dependencies |
+See TRUTH.md for full provenance on who wrote what.
 
 ---
 
-## [v1.1] – 2025-02-07
+## [v1.1] 2025-02-07
 
-### Bug fixes & stability
+### Bug fixes
 
-- **429 rate limit crash** – Polymarket API 429 responses no longer cause infinite recursion / stack overflow. Retries are now a single loop with exponential backoff (max 5 attempts). Urllib3 retries no longer handle 429, so there's one consistent retry path.
-- **Data loss on social post save** – When one social post failed to store, `session.rollback()` was wiping all posts from that batch. Storage now commits after each successful post so a single failure doesn't discard the rest.
-- **RSS deduplication** – RSS post IDs used Python's `hash()`, which changes between runs. Same articles were re-inserted every cycle. Switched to a stable SHA-256 hash of the article URL so duplicates are correctly skipped.
-- **Duplicate gaps in DB** – Every cycle inserted new `detected_gaps` rows even when the same contract+gap_type was already detected, filling the DB with duplicates. New gaps are only stored if the same (contract_id, gap_type) wasn't already detected within `GAP_DEDUPE_HOURS` (default 24h). Reporter now shows "latest per (contract, type)" so duplicate rows don't clutter the report.
+- **429 rate limit crash**: Polymarket 429 responses caused infinite recursion. Replaced with a single retry loop, exponential backoff, max 5 attempts.
+- **Data loss on social post save**: one failed post would `session.rollback()` and wipe the whole batch. Now commits after each successful post.
+- **RSS deduplication**: used Python's `hash()` which changes between runs. Same articles kept getting re-inserted. Switched to SHA-256 of the URL.
+- **Duplicate gaps in DB**: every cycle inserted new rows even for the same contract+gap_type. Now deduplicates within `GAP_DEDUPE_HOURS` (default 24h).
 
-### Behavior & coverage
+### Behavior changes
 
-- **Hardcoded 10-contract limit removed** – Social/news data was only fetched for the first 10 contracts, so most of the 474 contracts never got sentiment or gap analysis. This is now configurable via `MAX_CONTRACTS_FOR_SOCIAL` (default 50). More contracts get social data and can be analyzed for gaps.
-- **Sentiment only where there's data** – Sentiment analysis runs only for contracts that have at least one related social post. Gap detection runs only for contracts that have at least one sentiment analysis. This avoids wasted work and focuses analysis where data exists.
+- Removed hardcoded 10-contract limit for social data. Now configurable via `MAX_CONTRACTS_FOR_SOCIAL` (default 50).
+- Sentiment analysis only runs for contracts that actually have social posts. Gap detection only runs where there's sentiment data.
 
-### Configuration
+### New config
 
-- **`MAX_CONTRACTS_FOR_SOCIAL`** (default: 50) – Max contracts to fetch social/news data for per cycle.
-- **`GAP_DEDUPE_HOURS`** (default: 24) – Skip storing a gap if the same contract+type was already detected within this many hours.
-- **`GAP_SENTIMENT_PROB_SCALE`** (default: 0.4) – Scale from sentiment (-1..1) to implied probability: `0.5 + sentiment * scale`. Tunable if you want more/less sensitivity.
-
----
-
-*Format loosely follows [Keep a Changelog](https://keepachangelog.com/).*
+- `MAX_CONTRACTS_FOR_SOCIAL` (default: 50)
+- `GAP_DEDUPE_HOURS` (default: 24)
+- `GAP_SENTIMENT_PROB_SCALE` (default: 0.4)

@@ -1,24 +1,22 @@
-# Using Free Local LLMs with Ollama
+# Ollama Setup
 
-This guide shows you how to run the system **completely free** using Ollama instead of paid OpenAI API.
+How to run this system for free using local LLMs through Ollama.
 
-## Why Ollama?
+## Why Bother
 
-✅ **100% Free** - No API costs whatsoever
-✅ **Privacy** - All data stays on your machine
-✅ **Fast** - No network latency (after initial download)
-✅ **Offline** - Works without internet connection
-✅ **Quality** - Modern models like Llama 3.1 perform well
+- $0 forever. No API costs.
+- Data stays on your machine.
+- No network latency after the model loads.
+- Works offline.
+- Modern models (Llama 3.1, Qwen 2.5) are good enough for this.
 
-## Quick Start (5 Minutes)
+## Quick Setup
 
-### 1. Install Ollama
+### 1. Install
 
-**Windows:**
+**Linux:**
 ```bash
-# Download from https://ollama.ai/download
-# Or use winget:
-winget install Ollama.Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
 **Mac:**
@@ -26,244 +24,109 @@ winget install Ollama.Ollama
 brew install ollama
 ```
 
-**Linux:**
+**Windows:**
 ```bash
-curl -fsSL https://ollama.ai/install.sh | sh
+winget install Ollama.Ollama
 ```
 
-### 2. Start Ollama Service
+### 2. Start and Pull a Model
 
 ```bash
-ollama serve
+ollama serve              # keep this running
+
+# In another terminal:
+ollama pull llama3.1:8b   # recommended, ~4.7GB download
 ```
 
-Keep this running in a terminal window (or run as a service).
-
-### 3. Pull a Model
-
-Choose one of these models:
-
-**Recommended: Llama 3.1 8B** (Best balance)
-```bash
-ollama pull llama3.1:8b
-```
-Size: ~4.7GB | RAM needed: 8GB
-
-**Alternative: Mistral** (Fast and efficient)
-```bash
-ollama pull mistral
-```
-Size: ~4.1GB | RAM needed: 8GB
-
-**Alternative: Phi-3** (Smallest, good for laptops)
-```bash
-ollama pull phi3
-```
-Size: ~2.3GB | RAM needed: 4GB
-
-**Alternative: Qwen 2.5 7B** (Excellent reasoning)
-```bash
-ollama pull qwen2.5:7b
-```
-Size: ~4.4GB | RAM needed: 8GB
-
-### 4. Configure Your .env File
+### 3. Configure `.env`
 
 ```env
-# Use Ollama instead of OpenAI
 LLM_PROVIDER=ollama
-
-# Ollama settings
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1:8b
-
-# No OpenAI API key needed!
-# OPENAI_API_KEY=  # Leave empty or remove
-
-# Database (still required)
 DATABASE_URL=postgresql://postgres:password@localhost:5432/polymarket_gaps
 ```
 
-### 5. Run the System
+### 4. Run
 
 ```bash
-# Test configuration
 python run.py test
-
-# Run demo
 python run.py demo
-
-# Run continuously
-python run.py
 ```
 
-That's it! The system now runs completely free. 🎉
+Done.
 
-## Model Comparison
+## Model Options
 
-| Model | Size | RAM | Speed | Quality | Best For |
-|-------|------|-----|-------|---------|----------|
-| **llama3.1:8b** | 4.7GB | 8GB | Medium | Excellent | General use (recommended) |
-| **mistral** | 4.1GB | 8GB | Fast | Very Good | Speed priority |
-| **phi3** | 2.3GB | 4GB | Very Fast | Good | Low-end hardware |
-| **qwen2.5:7b** | 4.4GB | 8GB | Medium | Excellent | Complex reasoning |
+| Model | Size | RAM | Speed | Quality | Notes |
+|-------|------|-----|-------|---------|-------|
+| llama3.1:8b | 4.7GB | 8GB | Medium | Excellent | Best all-around pick |
+| mistral | 4.1GB | 8GB | Fast | Very good | If speed matters more |
+| phi3 | 2.3GB | 4GB | Very fast | Good | For low-RAM machines |
+| qwen2.5:7b | 4.4GB | 8GB | Medium | Excellent | Great for reasoning tasks |
 
-## Performance Comparison: Ollama vs OpenAI
+## Ollama vs OpenAI
 
-### Speed
-- **First Run**: Slower (loading model into RAM)
-- **Subsequent Runs**: Similar or faster (no network latency)
-- **Cycle Time**: ~10-20% slower than GPT-4
+**Speed:** first run is slower (loading model into RAM). After that, similar or faster since there's no network round-trip.
 
-### Quality
-- **Sentiment Analysis**: ~95% as accurate as GPT-4
-- **Gap Detection**: ~90% as accurate (excellent for MVP)
-- **Explanations**: Slightly less nuanced but still very good
+**Quality:** about 90-95% as good as GPT-4 for this use case. Sentiment analysis is nearly identical. Gap explanations are a bit less detailed but still solid.
 
-### Cost
-- **OpenAI GPT-4**: $0.10-0.30 per cycle (~$15-45/month continuous)
-- **Ollama**: $0.00 forever (just electricity)
+**Cost:** OpenAI runs $0.10-0.30 per cycle. Ollama is free.
 
 ## System Requirements
 
-### Minimum
-- 8GB RAM (for llama3.1:8b or mistral)
-- 10GB free disk space
-- CPU: Any modern processor (4+ cores recommended)
+**Minimum:** 8GB RAM, 10GB disk, 4-core CPU.
 
-### Recommended
-- 16GB RAM (smoother operation)
-- 20GB free disk space (if testing multiple models)
-- CPU: 8+ cores (faster inference)
-- GPU: Optional (NVIDIA GPU speeds up inference 5-10x)
+**Recommended:** 16GB RAM, 8+ cores. GPU optional but gives 5-10x speedup if you have an NVIDIA card.
 
-### Low-End Systems
-If you have limited RAM (4-6GB):
-```bash
-# Use smaller model
-ollama pull phi3
+**Low-end:** use `phi3` model, only needs 4GB RAM.
 
-# Configure in .env
-OLLAMA_MODEL=phi3
-```
+## GPU Acceleration
 
-## GPU Acceleration (Optional)
-
-If you have an NVIDIA GPU, Ollama automatically uses it for **5-10x speed boost**.
-
-**Check GPU usage:**
-```bash
-nvidia-smi
-```
-
-If GPU isn't being used, make sure you have NVIDIA drivers installed.
+If you have an NVIDIA GPU, Ollama uses it automatically. Check with `nvidia-smi`. If it's not being used, make sure your drivers are installed.
 
 ## Troubleshooting
 
-### Issue: "Connection refused" error
-**Solution:** Make sure Ollama is running
-```bash
-# Start Ollama
-ollama serve
+**"Connection refused":** `ollama serve` isn't running. Start it, then test with `curl http://localhost:11434`.
 
-# Or check if running
-curl http://localhost:11434
-```
+**"Model not found":** pull it first: `ollama pull llama3.1:8b`. Check with `ollama list`.
 
-### Issue: "Model not found"
-**Solution:** Pull the model first
-```bash
-ollama pull llama3.1:8b
-ollama list  # Verify it's downloaded
-```
+**Slow:** try a smaller model (`phi3`), reduce `MAX_CONTRACTS_PER_CYCLE`, or close other apps to free RAM.
 
-### Issue: System is slow
-**Solutions:**
-1. Use a smaller model (phi3)
-2. Reduce MAX_CONTRACTS_PER_CYCLE in .env
-3. Increase POLLING_INTERVAL (analyze less frequently)
-4. Close other applications to free RAM
+**Out of memory:** switch to `phi3` or reduce `SENTIMENT_BATCH_SIZE` to 15.
 
-### Issue: Out of memory
-**Solutions:**
-```bash
-# Switch to smaller model
-ollama pull phi3
+**Bad results:** try `qwen2.5:7b` (better reasoning), or set `LLM_TEMPERATURE=0.2` for more focused output.
 
-# Update .env
-OLLAMA_MODEL=phi3
+## Switching Between Providers
 
-# Or reduce batch size in .env
-SENTIMENT_BATCH_SIZE=25  # Instead of 50
-```
+Just change one line in `.env`:
 
-### Issue: Model gives poor results
-**Solutions:**
-1. Try a different model (qwen2.5:7b is excellent for reasoning)
-2. Adjust temperature in .env: `LLM_TEMPERATURE=0.2` (more focused)
-3. Ensure model is fully loaded (first query is always slow)
-
-## Advanced: Running Both OpenAI and Ollama
-
-You can switch between providers easily:
-
-**Use Ollama (free) for development:**
 ```env
+# Free
 LLM_PROVIDER=ollama
-OLLAMA_MODEL=llama3.1:8b
+
+# Or paid
+LLM_PROVIDER=deepseek
+# LLM_PROVIDER=openai
 ```
 
-**Use OpenAI for production (higher quality):**
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key-here
-```
+Restart and you're on the other provider. The system handles the switch.
 
-Just change `LLM_PROVIDER` and restart!
-
-## Model Updates
-
-Ollama models are frequently updated. Check for new versions:
+## Useful Commands
 
 ```bash
-# List available models
-ollama list
-
-# Update a model
-ollama pull llama3.1:8b
-
-# Remove old models to free space
-ollama rm old-model-name
+ollama serve              # Start server
+ollama list               # Show downloaded models
+ollama pull <model>       # Download a model
+ollama rm <model>         # Delete a model
+ollama run llama3.1:8b    # Interactive chat (for testing)
+ollama show llama3.1:8b   # Model info
+ollama --version          # Version check
 ```
 
-## Ollama Commands Cheat Sheet
+## Recommended Configs
 
-```bash
-# Start server
-ollama serve
-
-# List downloaded models
-ollama list
-
-# Pull new model
-ollama pull <model-name>
-
-# Remove model
-ollama rm <model-name>
-
-# Test model interactively
-ollama run llama3.1:8b
-
-# Check version
-ollama --version
-
-# Show model info
-ollama show llama3.1:8b
-```
-
-## Recommended Setup for Different Use Cases
-
-### **Development/Testing** (Free, Good Quality)
+**Dev/testing:**
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=mistral
@@ -271,7 +134,7 @@ SENTIMENT_BATCH_SIZE=25
 MAX_CONTRACTS_PER_CYCLE=10
 ```
 
-### **Production (Free, Best Quality)**
+**Best free quality:**
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=qwen2.5:7b
@@ -279,7 +142,7 @@ SENTIMENT_BATCH_SIZE=50
 MAX_CONTRACTS_PER_CYCLE=20
 ```
 
-### **Low-Resource Systems** (Free, Lightweight)
+**Low-resource machine:**
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=phi3
@@ -287,63 +150,8 @@ SENTIMENT_BATCH_SIZE=15
 MAX_CONTRACTS_PER_CYCLE=5
 ```
 
-### **Highest Quality** (Paid, Premium)
-```env
-LLM_PROVIDER=openai
-OPENAI_MODEL=gpt-4-turbo-preview
-# Use for final production deployment
-```
+## More Info
 
-## Expected Output Differences
-
-### Ollama Output:
-```
-Analysis: Social sentiment shows strong bullish indicators with 76%
-positive posts. Market odds at 45% appear to undervalue the YES
-position based on this data. The sentiment-probability gap suggests
-a potential opportunity.
-```
-
-### OpenAI GPT-4 Output:
-```
-Analysis: Social sentiment is overwhelmingly bullish (76% positive)
-while market odds remain at just 45%. Recent institutional adoption
-announcements and positive regulatory developments have not yet been
-fully priced in. The 27-point gap between sentiment-implied
-probability and market odds suggests significant undervaluation.
-```
-
-Both are good! GPT-4 is slightly more detailed, but Ollama is excellent for the task.
-
-## Migration Path
-
-Start with Ollama (free) → Validate system works → Optionally upgrade to OpenAI for production
-
-The system is designed to make this switch seamless - just change one line in `.env`!
-
-## Community & Support
-
-- **Ollama Website**: https://ollama.ai
-- **Ollama GitHub**: https://github.com/ollama/ollama
-- **Model Library**: https://ollama.ai/library
-- **Discord**: Join Ollama community for model recommendations
-
-## Summary
-
-**To run completely free:**
-1. Install Ollama
-2. Pull llama3.1:8b
-3. Set `LLM_PROVIDER=ollama` in .env
-4. Run the system normally
-
-**Zero API costs, excellent quality!** 🚀
-
-## Next Steps
-
-1. Install Ollama: `winget install Ollama.Ollama` (Windows)
-2. Start service: `ollama serve`
-3. Pull model: `ollama pull llama3.1:8b`
-4. Update .env: `LLM_PROVIDER=ollama`
-5. Run demo: `python run.py demo`
-
-You're now running a sophisticated AI system completely free! 🎯
+- Ollama: https://ollama.ai
+- Models: https://ollama.ai/library
+- GitHub: https://github.com/ollama/ollama
