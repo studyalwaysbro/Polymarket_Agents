@@ -1,0 +1,10 @@
+project: Polymarket_Agents
+dormant_after_days: 90
+sources:
+  - glob: "src/**/*.py"
+    required: false
+  - path: CHANGELOG.md
+    required: false
+derived:
+  - path: PROJECT_SUMMARY.md
+    required: false

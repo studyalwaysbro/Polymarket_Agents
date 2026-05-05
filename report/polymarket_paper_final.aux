@@ -1,0 +1,74 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{fama1970}
+\citation{wolfers2004}
+\citation{manski2006}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {II}Related Work}{1}{section.2}\protected@file@percent }
+\citation{bollen2011}
+\citation{zhang2018}
+\citation{kyle1985}
+\citation{crewai2024}
+\citation{langchain2023}
+\citation{hutto2014}
+\citation{loria2020}
+\@writefile{toc}{\contentsline {section}{\numberline {III}System Architecture}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Overview}{2}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Agent 1: Data Collection}{2}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Data Sources and Their Characteristics}}{2}{table.caption.2}\protected@file@percent }
+\newlabel{tab:sources}{{I}{2}{Data Sources and Their Characteristics}{table.caption.2}{}}
+\citation{hutto2014}
+\citation{loria2020}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Four-agent sequential pipeline architecture. Solid arrows indicate data flow between agents; dashed arrows indicate database persistence at each stage. Every cycle pulls from the Polymarket Gamma API and eight social/news sources, then routes through the four agents while writing intermediate state to PostgreSQL.}}{3}{figure.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:architecture}{{1}{3}{Four-agent sequential pipeline architecture. Solid arrows indicate data flow between agents; dashed arrows indicate database persistence at each stage. Every cycle pulls from the Polymarket Gamma API and eight social/news sources, then routes through the four agents while writing intermediate state to PostgreSQL}{figure.caption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Agent 2: Sentiment Analysis}{3}{subsection.3.3}\protected@file@percent }
+\newlabel{eq:ensemble}{{2}{3}{Agent 2: Sentiment Analysis}{equation.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-D}}Agent 3: Gap Detection}{4}{subsection.3.4}\protected@file@percent }
+\newlabel{eq:implied}{{5}{4}{Agent 3: Gap Detection}{equation.3.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-E}}Agent 4: Reporting and Dashboard}{4}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-F}}Database Architecture}{4}{subsection.3.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Database Schema Summary}}{4}{table.caption.3}\protected@file@percent }
+\newlabel{tab:schema}{{II}{4}{Database Schema Summary}{table.caption.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Results}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Quantitative Summary}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Pipeline Performance Metrics}}{5}{table.caption.4}\protected@file@percent }
+\newlabel{tab:results}{{III}{5}{Pipeline Performance Metrics}{table.caption.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Per-cycle execution history. Cycle 1a failed early on a database schema error; Cycle 1b was a quick re-init. Cycle 2 was the first long run with no detected gaps. Cycle 3 produced all 30.}}{5}{table.caption.5}\protected@file@percent }
+\newlabel{tab:cycles}{{IV}{5}{Per-cycle execution history. Cycle 1a failed early on a database schema error; Cycle 1b was a quick re-init. Cycle 2 was the first long run with no detected gaps. Cycle 3 produced all 30}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}The Social Media Optimism Bias}{5}{subsection.4.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Gap distribution by contract category. NHL longshots dominate the count but carry low confidence; entertainment/meme markets carry high confidence but reflect cross-platform irony rather than information.}}{5}{table.caption.7}\protected@file@percent }
+\newlabel{tab:gap_category}{{V}{5}{Gap distribution by contract category. NHL longshots dominate the count but carry low confidence; entertainment/meme markets carry high confidence but reflect cross-platform irony rather than information}{table.caption.7}{}}
+\citation{kyle1985}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Scatter plot of market odds vs.\ sentiment-implied odds for all 30 detected gaps. Points above the diagonal indicate bullish sentiment bias; the NHL cluster at near-zero market odds with $\sim $5\% implied odds represents systematic fan optimism, not market inefficiency.}}{6}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:scatter}{{2}{6}{Scatter plot of market odds vs.\ sentiment-implied odds for all 30 detected gaps. Points above the diagonal indicate bullish sentiment bias; the NHL cluster at near-zero market odds with $\sim $5\% implied odds represents systematic fan optimism, not market inefficiency}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Validation: Zero Resolved Predictions}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Why This Approach Fails}{6}{subsection.4.4}\protected@file@percent }
+\citation{kyle1985}
+\citation{lim2021}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-E}}What a Viable System Would Look Like}{7}{subsection.4.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {VI}{\ignorespaces Gap analysis: current system vs.\ what would be required for viable gap detection in liquid prediction markets.}}{7}{table.caption.8}\protected@file@percent }
+\newlabel{tab:gap_analysis}{{VI}{7}{Gap analysis: current system vs.\ what would be required for viable gap detection in liquid prediction markets}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {V}Discussion: Evidence for Market Efficiency}{7}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VI}The Pivot: Prediction Markets as Equity Features}{7}{section.6}\protected@file@percent }
+\citation{crewai2024}
+\citation{langchain2023}
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Technology Stack}{8}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Collaboration and Provenance}{8}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Limitations and Future Work}{8}{section.9}\protected@file@percent }
+\bibcite{fama1970}{1}
+\bibcite{kyle1985}{2}
+\bibcite{wolfers2004}{3}
+\bibcite{manski2006}{4}
+\bibcite{bollen2011}{5}
+\bibcite{zhang2018}{6}
+\bibcite{hutto2014}{7}
+\bibcite{loria2020}{8}
+\bibcite{crewai2024}{9}
+\bibcite{langchain2023}{10}
+\bibcite{lim2021}{11}
+\@writefile{toc}{\contentsline {section}{\numberline {X}Conclusion}{9}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{9}{section*.9}\protected@file@percent }
+\gdef \@abspage@last{9}
